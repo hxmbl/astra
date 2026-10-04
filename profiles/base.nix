@@ -33,7 +33,13 @@ let
     profiles=${lib.concatStringsSep " " cfg.profiles}
     astraVersion=${cfg.version}
     nixpkgs=${config.system.nixos.version}
-    nixpkgsRev=${if config.nixpkgs.revision == null then "unknown" else config.nixpkgs.revision}
+    # config.nixpkgs.revision does not exist — the nixpkgs option set is
+    # (isConfig, optCall, mergeConfig, lhs, rhs, allowUnfreePackages,
+    # packageOverrides, perlPackageOverrides, pkgs) per
+    # nixos/modules/misc/nixpkgs.nix. The revision lives under system.nixos,
+    # and it is nullOr str (nixos/modules/misc/version.nix:107), so the null
+    # check is needed.
+    nixpkgsRev=${if config.system.nixos.revision == null then "unknown" else config.system.nixos.revision}
     user=${cfg.user}
     desktop=${if cfg.desktop.enable then "true" else "false"}
   '';
