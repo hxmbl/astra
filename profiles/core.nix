@@ -62,7 +62,10 @@ in
       useUserPackages = true;
       users = {
         ${cfg.user} = {
-          imports = [ ../../home ];
+          # `../home`, not `../../home`: this file sits one level below the
+          # flake root (profiles/core.nix), so two levels up is /nix/store.
+          #   error: path '/nix/store/home' does not exist
+          imports = [ ../home ];
           # `desktop` is the single flag home/ needs to decide whether it is
           # managing a desktop or a shell on a server. mkDefault so that
           # profiles/desktop.nix setting it to true is not a second definition
