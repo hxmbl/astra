@@ -7,7 +7,13 @@
   ...
 }:
 {
-  imports = [ ../../../profiles/base.nix ];
+  imports = [
+    ../../../profiles/base.nix
+
+    # Generation health checks, but no rebooting: nobody wants a headless box to
+    # bounce itself because a check failed. The log is the notification.
+    ../../../modules/boot/ab.nix
+  ];
 
   networking.hostName = "astra-server-core";
 
@@ -29,6 +35,14 @@
   };
 
   networking.firewall.allowedTCPPorts = [ 22 ];
+
+  astra.ab = {
+    # grub owns the boot menu here, so astra does not try to rewrite it.
+    supportBootEntries = false;
+    # Log, never reboot. A server that bounces itself because a health check
+    # failed turns a small problem into an outage.
+    reboot = false;
+  };
 
   # A server has no use for a dev toolchain, but it does need the tools that
   # make `nixos-rebuild` and a container runtime pleasant to live with.

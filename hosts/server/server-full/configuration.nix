@@ -14,6 +14,7 @@
 {
   imports = [
     ../../../profiles/core.nix
+    ../../../modules/boot/ab.nix
 
     ../../../modules/services/caddy.nix
     ../../../modules/services/dashdot.nix
@@ -53,6 +54,14 @@
   services.dashdot.enable = true;
   services.searxng.enable = true;
   services.rustdesk.enable = true;
+
+  astra.ab = {
+    supportBootEntries = false; # grub owns the boot menu on this box
+    reboot = false; # it runs other people's services; never bounce it
+    # This is the one machine where "is the network up" is a real health
+    # question rather than a laptop in a cafe.
+    requireNetwork = true;
+  };
 
   # Server-only conveniences on top of the core profile.
   astra.packages = with pkgs; [

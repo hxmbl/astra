@@ -1,0 +1,802 @@
+#!/usr/bin/env bash
+# astra-boot — A/B boot and self-recovery on top of NixOS generations.
+#
+# WHAT THIS IS
+# ------------
+# NixOS already keeps every configuration you ever built as a "generation" and
+# already has a boot menu. What it does not have is a *policy*: which generation
+# should start, and what happens when the one that started is broken. You find
+# out by rebooting and looking at the menu.
+#
+# This tool adds three things, and nothing else:
+#
+#   1. A notion of two slots on top of generations:
+#        stable   - the newest generation that has proven it can run
+#        testing  - the newest generation, not yet proven
+#      The systemd-boot default entry is always the stable one. A newly
+#      activated generation is booted exactly once, under test; if it proves
+#      itself it is promoted to stable, if it does not the machine reboots
+#      itself into the last known-good generation.
+#
+#   2. A health check that is a list of small shell files rather than a wall of
+#      Nix. Add /etc/astra/health.d/*.check (or drop one in this repo and import
+#      it) and it is part of the boot contract.
+#
+#   3. A recovery path that does not depend on the thing that is broken:
+#      `astra-boot recover` lists what is available, and the NixOS rescue system
+#      (boot.rescueSystem) gives a shell with the store but not the root
+#      filesystem, which is the combination you need to fix either one.
+#
+# THE TWO-SLOT MODEL, PRECISELY
+# -----------------------------
+#   nixos-rebuild switch     -> activation hook writes pending=<N>
+#   next boot                -> arm: pending==N, so N becomes "testing"
+#                               the boot menu default is still stable
+#                               (we set the default to testing when *arming*,
+#                                so the new system does come up)
+#   astra-health.service     -> runs every check, logs, no side effects
+#   astra-boot-guard.timer   -> N consecutive failures or a check that says
+#                               "unrecoverable" => roll back
+#   healthy for PROMOTE_AFTER => promote: stable=N, menu rewritten, default=N
+#
+# Everything is one file per concern and one state directory. Read
+# `astra-boot status` before changing anything.
+#
+# NOT HANDLED HERE (deliberately, see MORNING.md):
+#   - a kernel panic before userspace starts. The reboot lands in the boot menu
+#     with the stable entry preselected, but nothing counts the attempts, so a
+#     panicking kernel will loop. Set astra.ab.haltOnPanic to hang instead of
+#     loop, and pick an entry by hand.
+#   - a kernel or filesystem that is corrupt. That is what boot.rescueSystem and
+#     the initrd maintenance shell are for.
+set -uo pipefail
+
+ASTRA_LIB_DIR=${ASTRA_LIB_DIR:-/etc/astra}
+ASTRA_BOOT_CONF=${ASTRA_BOOT_CONF:-$ASTRA_LIB_DIR/boot.conf}
+ASTRA_STATE_DIR=${ASTRA_STATE_DIR:-/var/lib/astra}
+ASTRA_HEALTH_DIR=${ASTRA_HEALTH_DIR:-$ASTRA_LIB_DIR/health.d}
+ASTRA_PROFILES=${ASTRA_PROFILES:-/nix/var/nix/profiles}
+
+ASTRA_STATE=$ASTRA_STATE_DIR/state
+ASTRA_CMDLINE_DIR=$ASTRA_STATE_DIR/cmdline
+ASTRA_SNAPSHOT_DIR=$ASTRA_STATE_DIR/snapshots
+ASTRA_HEALTH_LOG=$ASTRA_STATE_DIR/health.log
+
+# ---------------------------------------------------------------- defaults --
+ASTRA_KEEP=5 # generations to keep in the boot menu
+ASTRA_INTERVAL=20 # seconds between guard runs
+ASTRA_FAILURES=3 # consecutive failed guard runs before rolling back
+ASTRA_PROMOTE_AFTER=300 # seconds a generation must be healthy to be promoted
+ASTRA_ESP=${ASTRA_ESP:-} # empty = figure it out from lsblk
+ASTRA_REBOOT=1 # 0 = never reboot, just report
+ASTRA_REQUIRE_NETWORK=0 # 1 = a check needs the network to be up
+ASTRA_DEFAULT_CMDLINE=""
+ASTRA_SNAPSHOT_ROOT=${ASTRA_SNAPSHOT_ROOT:-/.snapshots}
+ASTRA_SNAPSHOT_PREFIX=${ASTRA_SNAPSHOT_PREFIX:-nixos}
+
+if [ -r "$ASTRA_BOOT_CONF" ]; then
+  # shellcheck disable=SC1090
+  . "$ASTRA_BOOT_CONF"
+fi
+
+# ------------------------------------------------------------------ output --
+log() {
+  local msg
+  msg="$(date -Is 2>/dev/null || date) astra: $*"
+  echo "$msg" >&2
+  # Also to the health log, which is what you will actually read in the morning.
+  if [ -d "$ASTRA_STATE_DIR" ]; then
+    printf '%s\n' "$msg" >>"$ASTRA_HEALTH_LOG" 2>/dev/null || true
+  fi
+}
+die() {
+  log "fatal: $*"
+  exit 1
+}
+need_root() {
+  [ "$(id -u)" = 0 ] || die "astra-boot needs root for this (try sudo)"
+}
+
+# -------------------------------------------------------------- generations --
+# The generations nix knows about, oldest first, newest last.
+generations() {
+  local n
+  for n in $(ls -1 "$ASTRA_PROFILES" 2>/dev/null |
+    sed -n 's/^system-\([0-9][0-9]*\)-link$/\1/p' | sort -n); do
+    printf '%s ' "$n"
+  done
+}
+
+newest_generation() {
+  generations | tr ' ' '\n' | tail -n 1
+}
+
+# The store path of a generation's system closure.
+closure() {
+  local n=$1
+  readlink -f "$ASTRA_PROFILES/system-$n-link" 2>/dev/null
+}
+
+# Which generation am I right now?
+current_gen() {
+  local link base
+  link=$(readlink /run/current-system 2>/dev/null)
+  if [ -n "$link" ]; then
+    base=$(basename "$link")
+    base=${base#system-}
+    if printf '%s' "$base" | grep -qE '^[0-9]+-link$'; then
+      printf '%s' "${base%-link}"
+      return 0
+    fi
+  fi
+  # Fall back to matching the running closure against the profile links, which
+  # is what you have to do from a rescue system or a chroot.
+  local target n
+  target=$(readlink -f /run/current-system 2>/dev/null)
+  for n in $(generations); do
+    if [ "$(closure "$n")" = "$target" ]; then
+      printf '%s' "$n"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# The kernel command line this generation was booted with. Recorded the first
+# time we ever boot it, because a generation from three reboots ago did not have
+# a boot entry we could have copied it from.
+cmdline_for() {
+  local n=$1
+  if [ -r "$ASTRA_CMDLINE_DIR/$n" ]; then
+    cat "$ASTRA_CMDLINE_DIR/$n"
+  elif [ -n "$ASTRA_DEFAULT_CMDLINE" ]; then
+    printf '%s' "$ASTRA_DEFAULT_CMDLINE"
+  else
+    tr -d '\n' </proc/cmdline 2>/dev/null
+  fi
+}
+
+record_cmdline() {
+  local n=$1
+  mkdir -p "$ASTRA_CMDLINE_DIR" 2>/dev/null || return 0
+  [ -r "$ASTRA_CMDLINE_DIR/$n" ] && return 0
+  tr -d '\n' </proc/cmdline >"$ASTRA_CMDLINE_DIR/$n" 2>/dev/null || true
+}
+
+# ------------------------------------------------------------------- state --
+# A flat key=value file. Shell-sourceable so this script and anything else can
+# read it without a parser. Keys are: stable, pending, testing, failed,
+# failures, healthy_since.
+state_set() {
+  local key=$1 val=$2 tmp
+  mkdir -p "$ASTRA_STATE_DIR" 2>/dev/null || true
+  tmp=$(mktemp "$ASTRA_STATE_DIR/state.XXXXXX" 2>/dev/null) || return 0
+  if [ -r "$ASTRA_STATE" ]; then
+    grep -v "^$key=" "$ASTRA_STATE" >"$tmp" 2>/dev/null || true
+  fi
+  printf '%s=%s\n' "$key" "$val" >>"$tmp"
+  # Sort so a diff of the state file is readable.
+  sort -o "$tmp" "$tmp" 2>/dev/null || true
+  mv "$tmp" "$ASTRA_STATE" 2>/dev/null || true
+}
+
+state_clear() {
+  state_set "$1" ""
+}
+
+state_load() {
+  # shellcheck disable=SC1090
+  [ -r "$ASTRA_STATE" ] && . "$ASTRA_STATE"
+  return 0
+}
+
+# ------------------------------------------------------------------- esp ----
+esp_mount() {
+  local dev
+  if [ -n "${ASTRA_ESP:-}" ] && mountpoint -q "$ASTRA_ESP"; then
+    printf '%s' "$ASTRA_ESP"
+    return 0
+  fi
+  # systemd-boot's EFI system partition, found by the well-known partition type
+  # GUID. Works whether it is /boot or /efi, FAT or vfat, whatever it is called.
+  dev=$(lsblk -rno PATH,PARTTYPE 2>/dev/null |
+    awk '$2 == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" { print $1; exit }')
+  [ -n "$dev" ] || return 1
+  local mp=${ASTRA_ESP:-}
+  if [ -z "$mp" ]; then
+    mp=$([ -d /efi ] && echo /efi || echo /boot)
+  fi
+  mkdir -p "$mp"
+  mount "$dev" "$mp" 2>/dev/null || return 1
+  printf '%s' "$mp"
+}
+
+# ------------------------------------------------------------ boot entries --
+entry_title() {
+  local n=$1
+  if [ "${stable:-}" = "$n" ]; then
+    printf 'Astra n=%s stable' "$n"
+  elif [ "${testing:-}" = "$n" ]; then
+    printf 'Astra n=%s (testing)' "$n"
+  elif [[ " ${failed:-} " == *" $n "* ]]; then
+    printf 'Astra n=%s (failed)' "$n"
+  else
+    printf 'Astra n=%s' "$n"
+  fi
+}
+
+# Rewrite our half of the boot menu from whatever is in the store right now.
+#
+# Why we write entries ourselves instead of using the ones systemd-boot's
+# generator makes: the generator only knows about generations that were in the
+# closure at build time, so the previous good system may simply not be in the
+# menu — which is precisely the system you need when the current one is broken.
+# Our entries point at store paths that exist on disk, discovered at runtime.
+write_entries() {
+  command -v bootctl >/dev/null 2>&1 || return 0
+  local mp gens n sys kern initrd title existing
+  mp=$(esp_mount) || {
+    log "no EFI system partition found; leaving the boot menu alone"
+    return 1
+  }
+  mkdir -p "$mp/loader/entries"
+  gens=" $(generations) "
+
+  for n in $(generations); do
+    sys=$(closure "$n")
+    [ -n "$sys" ] || continue
+    kern="$sys/kernel"
+    initrd="$sys/initrd"
+    if [ ! -e "$kern" ] || [ ! -e "$initrd" ]; then
+      log "generation $n has no kernel/initrd in the store; not adding a boot entry"
+      continue
+    fi
+    title=$(entry_title "$n")
+    cat >"$mp/loader/entries/astra-$n.conf" <<-EOF
+		title $title
+		version $n
+		linux $kern
+		initrd $initrd
+		options $(cmdline_for "$n")
+	EOF
+    log "boot entry: $title -> $sys"
+  done
+
+  # Drop entries for generations that are gone, and any of ours that we did not
+  # just rewrite (i.e. whose kernel the garbage collector took).
+  for existing in "$mp"/loader/entries/astra-*.conf; do
+    [ -e "$existing" ] || continue
+    n=${existing##*/astra-}
+    n=${n%.conf}
+    case "$gens" in
+      *" $n "*) ;;
+      *)
+        log "removing boot entry for generation $n (not in the store)"
+        rm -f "$existing"
+        ;;
+    esac
+  done
+  return 0
+}
+
+# Point the boot menu's default at a generation.
+set_default_entry() {
+  local want=$1 title
+  command -v bootctl >/dev/null 2>&1 || {
+    log "bootctl not available; cannot set the default boot entry"
+    return 1
+  }
+  title=$(entry_title "$want")
+  if bootctl set-default "$title" 2>/dev/null; then
+    log "boot default set to '$title'"
+    return 0
+  fi
+  # The stable generation may have lost its kernel to the garbage collector. In
+  # that case the newest generation that *does* have one is a better default than
+  # no default at all.
+  local n
+  for n in $(generations | tr ' ' '\n' | tac); do
+    [ -e "$(closure "$n")/kernel" ] || continue
+    title=$(entry_title "$n")
+    if bootctl set-default "$title" 2>/dev/null; then
+      log "boot default set to '$title' (fallback: generation $want is unusable)"
+      return 0
+    fi
+  done
+  log "could not set any default boot entry"
+  return 1
+}
+
+# -------------------------------------------------------------- health ------
+# Every *.check in $ASTRA_HEALTH_DIR runs with `sh`. Exit 0 means healthy.
+# Whatever it prints becomes the log line, so a check should print one sentence
+# when it fails and stay quiet when it passes.
+run_checks() {
+  local f rc out failed=0 count=0
+  shopt -s nullglob
+  for f in "$ASTRA_HEALTH_DIR"/*.check; do
+    count=$((count + 1))
+    out=$(timeout 30 sh "$f" 2>&1)
+    rc=$?
+    if [ $rc -eq 0 ]; then
+      [ -n "$out" ] && log "check $(basename "$f"): ok — $out"
+    else
+      failed=1
+      log "check $(basename "$f"): FAIL (rc=$rc) — ${out:-no output}"
+    fi
+  done
+  shopt -u nullglob
+  if [ "$count" = 0 ]; then
+    log "no health checks found in $ASTRA_HEALTH_DIR; treating as healthy but unproven"
+  fi
+  return $failed
+}
+
+# --------------------------------------------------------------- commands ---
+cmd_status() {
+  state_load
+  local n cur
+  cur=$(current_gen 2>/dev/null) || cur="?"
+  echo "astra-boot"
+  echo "  running    $cur"
+  echo "  stable     ${stable:-<none>}"
+  echo "  testing    ${testing:-<none>}"
+  echo "  pending    ${pending:-<none>}"
+  echo "  failed     ${failed:-<none>}"
+  echo "  failures   ${failures:-0}/${ASTRA_FAILURES}"
+  echo "  promotions ${promotions:-0}"
+  echo "  esp        ${ASTRA_ESP:-<auto>}"
+  echo
+  printf '  %-6s %-10s %s\n' "gen" "state" "kernel"
+  for n in $(generations | tr ' ' '\n' | tac); do
+    local mark=" "
+    [ "${stable:-}" = "$n" ] && mark="*"
+    [ "${testing:-}" = "$n" ] && mark="~"
+    printf '%s %-4s %-10s %s\n' "$mark" "$n" "$(entry_title "$n" | sed 's/Astra n=[0-9]* *//')" "$(closure "$n")"
+  done
+  echo
+  if [ -f "$ASTRA_HEALTH_LOG" ]; then
+    echo "  last health lines:"
+    tail -n 8 "$ASTRA_HEALTH_LOG" | sed 's/^/    /'
+  fi
+}
+
+cmd_generations() {
+  local n
+  for n in $(generations | tr ' ' '\n' | tac); do
+    printf '%s\t%s\n' "$n" "$(closure "$n")"
+  done
+}
+
+# Called by astra-boot-arm.service, early in every boot, before the display
+# manager. Decides whether this boot is "under test" or "just a normal boot".
+cmd_arm() {
+  local n
+  n=$(current_gen 2>/dev/null) || {
+    log "cannot identify the running generation; not arming"
+    return 0
+  }
+  state_load
+  record_cmdline "$n"
+  write_entries >/dev/null
+
+  if [ "${testing:-}" = "$n" ]; then
+    # We are already under test; leave the state alone so the guard can count.
+    log "generation $n is under test (arming)"
+    set_default_entry "$n" >/dev/null
+    return 0
+  fi
+
+  if [ "${pending:-0}" != "0" ] && [ "${pending:-}" = "$n" ]; then
+    # First boot after a switch.
+    state_set pending 0
+    state_set testing "$n"
+    state_set failures 0
+    state_clear healthy_since
+    log "generation $n promoted to 'testing'"
+    write_entries >/dev/null
+    set_default_entry "$n" >/dev/null
+    return 0
+  fi
+
+  # Not the generation we were waiting for. Somebody picked something from the
+  # boot menu, or this is the stable generation booting normally. Either way,
+  # clear the test state so the guard has nothing to do, and treat this
+  # generation as good enough to be the default — a manual choice is a
+  # deliberate promotion.
+  state_clear testing
+  state_clear pending
+  state_set failures 0
+  state_clear healthy_since
+  if [ -z "${stable:-}" ]; then
+    state_set stable "$n"
+    log "generation $n is stable (first known-good)"
+    write_entries >/dev/null
+    set_default_entry "$n" >/dev/null
+  else
+    set_default_entry "${stable}" >/dev/null
+  fi
+  log "generation $n armed (not under test)"
+}
+
+# Called by astra-health.service. One pass, no side effects other than logging:
+# the guard decides what to do, so a human running this by hand learns
+# something instead of triggering a reboot.
+cmd_health() {
+  log "--- health pass ---"
+  if run_checks; then
+    log "health: all checks passed"
+    return 0
+  fi
+  log "health: at least one check failed"
+  return 1
+}
+
+# Called by astra-boot-guard.timer. The only place that promotes or rolls back.
+cmd_guard() {
+  need_root
+  local n now
+  n=$(current_gen 2>/dev/null) || return 0
+  state_load
+
+  if [ "${testing:-}" != "$n" ]; then
+    log "guard: generation $n is not under test; nothing to do"
+    return 0
+  fi
+
+  if run_checks; then
+    local since
+    now=$(date +%s)
+    since=${healthy_since:-0}
+    if [ "$since" = 0 ]; then
+      state_set healthy_since "$now"
+      log "guard: generation $n healthy, starting the promotion timer ($((ASTRA_PROMOTE_AFTER / 60)) min)"
+      return 0
+    fi
+    if [ $((now - since)) -ge "$ASTRA_PROMOTE_AFTER" ]; then
+      promote "$n" "healthy for $((now - since))s"
+    else
+      log "guard: generation $n healthy for $((now - since))/${ASTRA_PROMOTE_AFTER}s"
+    fi
+    return 0
+  fi
+
+  local failures
+  failures=$((${failures:-0} + 1))
+  state_set failures "$failures"
+  if [ "$failures" -ge "$ASTRA_FAILURES" ]; then
+    rollback "health checks failed $failures times"
+  else
+    log "guard: health failed ($failures/$ASTRA_FAILURES); not rolling back yet"
+  fi
+}
+
+# Mark a generation as the good one. This is the only function that sets
+# `stable`, which is why it is also the only place `promotions` is counted.
+promote() {
+  local n=${1:-} reason=${2:-manual}
+  [ -n "$n" ] || n=$(current_gen 2>/dev/null) || die "not in a NixOS generation"
+  state_set stable "$n"
+  state_clear testing
+  state_clear pending
+  state_clear failed
+  state_set failures 0
+  state_clear healthy_since
+  state_set promotions "$((${promotions:-0} + 1))"
+  state_set last_promote "$(date -Is)"
+  write_entries >/dev/null
+  set_default_entry "$n" >/dev/null
+  log "promoted generation $n to stable ($reason)"
+}
+
+cmd_promote() {
+  need_root
+  promote "${1:-}" "explicitly requested"
+}
+
+# Go back to the last known-good generation.
+#
+# This does not "undo" anything: it changes which generation the boot menu
+# starts, and reboots. That is deliberate. NixOS generations are immutable, so
+# the old system is still exactly there; there is nothing to roll back in a
+# transactional system, only a choice about which one to start.
+rollback() {
+  local reason=${1:-manual} target
+  state_load
+  target=${stable:-}
+  [ -n "$target" ] || target=$(newest_generation)
+  [ -n "$target" ] || die "no generations at all; nothing to roll back to"
+
+  if [ "$(current_gen 2>/dev/null)" = "$target" ]; then
+    # Already on the good one: try to step back to the previous good one so that
+    # a manual rollback is actually a rollback.
+    local prev
+    for prev in $(generations | tr ' ' '\n' | tac); do
+      [ "$prev" = "$target" ] && continue
+      [[ " ${failed:-} " == *" $prev "* ]] && continue
+      [ -e "$(closure "$prev")/kernel" ] || continue
+      target=$prev
+      state_set stable "$target"
+      log "already on the stable generation; stepping back to $target"
+      break
+    done
+  else
+    # The generation we are leaving gets the "failed" label so the boot menu
+    # says so. The one we are rolling *to* stays clean.
+    local from
+    from=$(current_gen 2>/dev/null)
+    if [ -n "$from" ]; then
+      state_set failed "$(echo "${failed:-} $from" | tr -s ' ' | sed 's/^ //;s/ $//')"
+    fi
+  fi
+
+  state_clear testing
+  state_clear pending
+  state_set failures 0
+  state_clear healthy_since
+  write_entries >/dev/null
+  set_default_entry "$target" >/dev/null
+
+  if [ "$ASTRA_REBOOT" = 1 ] && command -v systemctl >/dev/null 2>&1; then
+    log "rolling back to generation $target ($reason); rebooting in 2s"
+    sleep 2
+    systemctl reboot
+  else
+    log "rolling back to generation $target ($reason); reboot skipped"
+  fi
+}
+
+cmd_rollback() {
+  need_root
+  rollback "manual request"
+}
+
+cmd_entries() {
+  need_root
+  state_load
+  write_entries
+  if [ -n "${stable:-}" ]; then
+    set_default_entry "$stable"
+  fi
+}
+
+# `system.activationScripts.astra-ab` calls this after every switch.
+cmd_pending() {
+  need_root
+  local n
+  n=$(current_gen 2>/dev/null) || {
+    log "cannot identify the running generation"
+    return 0
+  }
+  state_set pending "$n"
+  state_load
+  write_entries >/dev/null
+  log "generation $n will be booted under test on the next start"
+}
+
+# ---------------------------------------------------------------- recovery --
+# A menu, because "which generation do I want" is the one question recovery is
+# actually asking, and answering it should not require remembering the layout of
+# /nix/var/nix/profiles.
+cmd_recover() {
+  need_root
+  state_load
+  local n cur choice
+  cur=$(current_gen 2>/dev/null) || cur="?"
+
+  echo
+  echo "astra recovery"
+  echo "  running: $cur    stable: ${stable:-<none>}"
+  echo
+  printf '  %-4s %-10s %s\n' "gen" "state" "closure"
+  for n in $(generations | tr ' ' '\n' | tac); do
+    printf '  %-4s %-10s %s\n' "$n" "$(entry_title "$n" | sed 's/Astra n=[0-9]* *//')" "$(closure "$n")"
+  done
+  echo
+  echo "  p <gen>   make <gen> the stable generation and boot it next time"
+  echo "  b <gen>   boot <gen> next time without changing what is stable"
+  echo "  e         rewrite the boot menu entries from the store"
+  echo "  s         show the raw health log"
+  echo "  q         quit"
+  echo
+
+  if [ ! -t 0 ]; then
+    echo "(stdin is not a terminal; nothing to do)"
+    return 0
+  fi
+  read -r -p "  > " choice || return 0
+  case "${choice:-q}" in
+    p | p\ *)
+      promote "${choice#* }" "chosen at the recovery prompt"
+      ;;
+    b | b\ *)
+      n="${choice#* }"
+      state_set pending "$n"
+      state_set testing "$n"
+      write_entries >/dev/null
+      set_default_entry "$n" >/dev/null
+      log "generation $n armed; it will be the default on the next boot"
+      ;;
+    e)
+      write_entries
+      ;;
+    s)
+      [ -f "$ASTRA_HEALTH_LOG" ] && cat "$ASTRA_HEALTH_LOG"
+      ;;
+    *)
+      ;;
+  esac
+}
+
+# --------------------------------------------------------------- snapshots --
+# Only meaningful on btrfs. See modules/boot/snapshots.nix.
+snapshot_root_fs() {
+  local src=${1:-} gen prev dest gcroot parent
+  gen=$(current_gen 2>/dev/null) || gen=$(date +%Y%m%d-%H%M%S)
+  prev=$(($(newest_generation) - 1))
+
+  if [ -z "$src" ]; then
+    src=$(findmnt -no SOURCE / 2>/dev/null)
+  fi
+  [ -n "$src" ] || {
+    log "cannot work out what / is; pass the btrfs partition explicitly"
+    return 1
+  }
+  # Never snapshot a whole disk: that would include the ESP and every other
+  # subvolume on it. Snapshots are per-subvolume, so we need the partition the
+  # subvolume lives on, and lsblk already knows the parent of a partition.
+  parent=$(lsblk -no PKNAME "$src" 2>/dev/null)
+  if [[ "$src" == /dev/* ]] && [ -z "$parent" ]; then
+    log "$src looks like a whole disk; pass the partition to snapshot, e.g. /dev/nvme0n1p2"
+    return 1
+  fi
+  [ -n "$parent" ] && src="/dev/$parent"
+
+  log "snapshotting $src (generation $gen)"
+
+  dest="$ASTRA_SNAPSHOT_ROOT/$ASTRA_SNAPSHOT_PREFIX-$gen"
+  if [ -e "$dest" ]; then
+    log "snapshot $dest already exists"
+    return 0
+  fi
+
+  btrfs subvolume snapshot "$src" "$dest" >>"$ASTRA_HEALTH_LOG" 2>&1 || {
+    log "btrfs snapshot of $src failed; is / a btrfs subvolume?"
+    return 1
+  }
+
+  # The snapshot protects the *data*. The old *kernel* lives in /nix, which is a
+  # separate subvolume and is not in the snapshot — so without a GC root the
+  # garbage collector is free to delete the exact closure the snapshot needs in
+  # order to boot. This is the line people forget.
+  if [ -n "$prev" ] && [ -e "$ASTRA_PROFILES/system-$prev-link" ]; then
+    gcroot="$ASTRA_SNAPSHOT_DIR/gcroots/$prev"
+    mkdir -p "$(dirname "$gcroot")"
+    nix-store --add-root "$gcroot" --realise "$ASTRA_PROFILES/system-$prev-link" \
+      --register-validity >>"$ASTRA_HEALTH_LOG" 2>&1 &&
+      log "pinned generation $prev for the snapshot"
+  fi
+
+  mkdir -p "$ASTRA_SNAPSHOT_DIR"
+  {
+    printf 'generation=%s\n' "$gen"
+    printf 'source=%s\n' "$src"
+    printf 'destination=%s\n' "$dest"
+    printf 'created=%s\n' "$(date -Is)"
+    printf 'pinned=%s\n' "${prev:-}"
+  } >"$ASTRA_SNAPSHOT_DIR/$gen"
+
+  log "snapshot written to $dest"
+}
+
+cmd_snapshot() {
+  need_root
+  snapshot_root_fs "${1:-}"
+}
+
+cmd_snapshots() {
+  local f
+  if [ ! -d "$ASTRA_SNAPSHOT_DIR" ] || ! ls "$ASTRA_SNAPSHOT_DIR"/* >/dev/null 2>&1; then
+    echo "no snapshots (astra.ab.snapshot.enable is probably off, or / is not btrfs)"
+    return 0
+  fi
+  for f in "$ASTRA_SNAPSHOT_DIR"/*; do
+    [ -f "$f" ] || continue
+    printf 'generation %s: ' "$(basename "$f")"
+    tr '\n' ' ' <"$f"
+    echo
+  done
+}
+
+# Restoring means mounting the snapshot as / and switching into it. That is not
+# something to do to a running machine, so this only ever prints the plan.
+cmd_restore_plan() {
+  local snap=${1:-} meta="$ASTRA_SNAPSHOT_DIR/${1:-}"
+  if [ -z "$snap" ] || [ ! -f "$meta" ]; then
+    echo "usage: astra-boot restore-plan <snapshot>"
+    cmd_snapshots
+    return 1
+  fi
+  # shellcheck disable=SC1090
+  . "$meta"
+  cat <<-EOF
+	# plan for snapshot $generation (created $created)
+	#
+	# Run this from a rescue shell — boot "NixOS - Rescue system" from the boot
+	# menu, or press enter at the initrd maintenance prompt. The root filesystem
+	# is NOT mounted there, which is the whole point.
+
+	# 1. find the filesystem
+	lsblk -f
+
+	# 2. mount the snapshot read-only to look at it
+	mkdir -p /mnt/astra
+	mount -o subvol=$ASTRA_SNAPSHOT_PREFIX-$generation /dev/<the-btrfs-device> /mnt/astra
+
+	# 3. see what you are about to lose
+	ls /mnt/astra
+	cat /mnt/astra/etc/fstab
+
+	# 4. mount it for real, and switch into it
+	umount /mnt/astra
+	mount -o subvol=$ASTRA_SNAPSHOT_PREFIX-$generation /dev/<the-btrfs-device> /mnt/astra
+	chroot /mnt/astra /bin/bash
+
+	# 5. inside: put the pinned generation back as the default
+	nixos-rebuild switch --profile /nix/var/nix/profiles/system-$pinned-link
+	# ...or roll forward instead:
+	#   nixos-rebuild switch --flake /etc/nixos#$(cat /mnt/astra/etc/hostname)
+
+	# 6. reboot
+	reboot
+	EOF
+}
+
+usage() {
+  cat <<-EOF
+	astra-boot — A/B boot and self-recovery on top of NixOS generations
+
+	  status            what is running, what is stable, what failed
+	  generations       list generations and their store paths
+	  arm               (boot-time) decide if this generation is under test
+	  health            run every check in $ASTRA_HEALTH_DIR once
+	  guard             (timer) promote or roll back based on health
+	  promote [gen]     mark a generation as the known-good one
+	  rollback          boot the last known-good generation again
+	  entries           rewrite the boot menu from the store
+	  recover           interactive recovery menu
+	  snapshot [dev]    snapshot / into $ASTRA_SNAPSHOT_ROOT
+	  snapshots         list snapshots
+	  restore-plan <s>  print how to restore a snapshot, and from where
+
+	Every knob lives in $ASTRA_BOOT_CONF; state lives in $ASTRA_STATE_DIR.
+	EOF
+}
+
+main() {
+  local cmd=${1:-status}
+  shift 2>/dev/null || true
+  case "$cmd" in
+    status | "" | st) cmd_status "$@" ;;
+    generations | gens) cmd_generations "$@" ;;
+    arm) cmd_arm "$@" ;;
+    health | check) cmd_health "$@" ;;
+    guard) cmd_guard "$@" ;;
+    promote) cmd_promote "$@" ;;
+    rollback | back) cmd_rollback "$@" ;;
+    entries) cmd_entries "$@" ;;
+    recover) cmd_recover "$@" ;;
+    pending) cmd_pending "$@" ;;
+    snapshot) cmd_snapshot "$@" ;;
+    snapshots) cmd_snapshots "$@" ;;
+    restore-plan) cmd_restore_plan "$@" ;;
+    -h | --help | help | usage) usage ;;
+    *)
+      echo "astra-boot: unknown command '$cmd'" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

@@ -76,7 +76,10 @@
 
       packages.${system} = {
         astra-info = (import ./lib/astra-info.nix { inherit nixpkgs system; }).package;
-        astra-boot = import ./lib/astra-boot.nix { inherit nixpkgs system; };
+        astra-boot = import ./lib/astra-boot.nix {
+          pkgs = legacy;
+          inherit system;
+        };
       };
 
       # `nix fmt` in the repo formats everything with alejandra.
