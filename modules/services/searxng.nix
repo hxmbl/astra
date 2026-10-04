@@ -88,8 +88,6 @@ in
         };
         autoStart = true;
       };
-
-      volumes.searxng-valkey = { };
     };
 
     systemd.tmpfiles.rules = [ "d ${cfg.settingsDir} 0755 root root -" ];

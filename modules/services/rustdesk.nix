@@ -93,8 +93,6 @@ in
         volumes = [ "rustdesk-data:/root" ];
         autoStart = true;
       };
-
-      volumes.rustdesk-data = { };
     };
   };
 }

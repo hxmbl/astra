@@ -208,7 +208,6 @@ in
         ];
         autoStart = true;
       };
-      volumes."zigbee2mqtt-data" = { };
     };
 
     systemd.tmpfiles.rules =
