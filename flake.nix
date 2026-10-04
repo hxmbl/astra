@@ -37,17 +37,24 @@
       lib = nixpkgs.lib;
       legacy = nixpkgs.legacyPackages.${system};
 
-      # Every host is a directory with a configuration.nix in it. Adding a
+      # Every host is one line, pointing straight at its configuration.nix. Adding a
       # machine is one line here plus one file on disk; nothing else in this
       # file changes and CI reads the same list.
+      #
+      # These are paths, not strings, and that matters: a module reached as a
+      # string is parsed with no base directory, so every relative `imports`
+      # inside it (./base.nix, ./core.nix) resolves from / and evaluation dies
+      # with 'path /profiles/base.nix does not exist'. Interpolating a path into
+      # a string ("${path}/configuration.nix") does exactly that. Naming the
+      # file directly keeps the context.
       hosts = {
-        laptop = ./hosts/laptop;
-        vm-nano = ./hosts/vm/nano;
-        vm-mini = ./hosts/vm/mini;
-        vm-full = ./hosts/vm/full;
-        server-full = ./hosts/server/server-full;
-        server-core = ./hosts/server/server-core;
-        astra-home = ./hosts/astra-home;
+        laptop = ./hosts/laptop/configuration.nix;
+        vm-nano = ./hosts/vm/nano/configuration.nix;
+        vm-mini = ./hosts/vm/mini/configuration.nix;
+        vm-full = ./hosts/vm/full/configuration.nix;
+        server-full = ./hosts/server/server-full/configuration.nix;
+        server-core = ./hosts/server/server-core/configuration.nix;
+        astra-home = ./hosts/astra-home/configuration.nix;
       };
 
       # Passing the whole input set as specialArgs means any module can reach
@@ -58,7 +65,7 @@
       # unapplied function: `nixosConfigurations.<name>` evaluates to a lambda
       # rather than a system, and nothing in the flake is usable.
       mkHost =
-        path:
+        host:
         lib.nixosSystem {
           inherit system;
           specialArgs = inputs // {
@@ -66,7 +73,7 @@
             astraInputs = inputs;
           };
           modules = [
-            "${path}/configuration.nix"
+            host
             home-manager.nixosModules.home-manager
           ];
         };

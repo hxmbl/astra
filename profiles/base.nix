@@ -235,10 +235,15 @@ in
 
     # -------------------------------------------------------------- logging --
     services.journald = {
-      # Long enough to debug last week's boot failure, short enough not to
-      # fill a laptop SSD.
-      maxRetentionSec = "14day";
-      SystemMaxUse = "2G";
+      # services.journald declares exactly seven options in nixpkgs (console,
+      # rateLimitInterval, storage, rateLimitBurst, audit, extraConfig,
+      # forwardToSyslog); arbitrary journald.conf keys go in extraConfig.
+      # 14 days is long enough to debug last week's boot failure and short
+      # enough not to fill a laptop SSD.
+      extraConfig = ''
+        MaxRetentionSec=14day
+        SystemMaxUse=2G
+      '';
     };
     services.logind = {
       # Suspend far enough out to close the lid without draining the battery.
