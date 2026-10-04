@@ -12,9 +12,9 @@
 }:
 {
   imports = [
-    ../../../profiles/core.nix
-    ../../../modules/boot/ab.nix
-    ../../../modules/astra/home.nix
+    ../../profiles/core.nix
+    ../../modules/boot/ab.nix
+    ../../modules/astra/home.nix
   ];
 
   networking.hostName = "astra-home";
