@@ -67,7 +67,7 @@ in
     # The snapshot settings themselves are appended to /etc/astra/boot.conf by
     # modules/boot/ab.nix — one config file, one owner.
 
-    system.activationScripts.astra-snapshot = lib.stringAfter [ "astra-secrets" ] ''
+    system.activationScripts.astra-snapshot = ''
       if command -v astra-boot >/dev/null 2>&1; then
         if ! astra-boot snapshot >/dev/null 2>&1; then
           logger -t astra "snapshot skipped (is / a btrfs subvolume?)"
@@ -77,7 +77,7 @@ in
 
     # Pruning is done at activation rather than by a timer: a rebuild is a
     # natural moment for it, and it avoids another timer.
-    system.activationScripts.astra-snapshot-prune = lib.stringAfter [ "astra-snapshot" ] ''
+    system.activationScripts.astra-snapshot-prune = ''
       if [ "${toString cfg.prune}" -gt 0 ] && [ -d ${cfg.root} ]; then
         count=$(ls -1d ${cfg.root}/${cfg.prefix}-* 2>/dev/null | wc -l)
         if [ "$count" -gt ${toString cfg.prune} ]; then

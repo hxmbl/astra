@@ -83,10 +83,17 @@ in
 
     # Runs before switch-to-configuration changes anything, so a service can
     # already read its file during activation.
-    system.activationScripts.astra-secrets = lib.stringAfter [
-      "mkdir -p ${cfg.dir}"
-      "chmod ${cfg.mode} ${cfg.dir}"
-    ]
+    #
+    # A plain string: system.activationScripts.<name> is types.lines, so
+    # lib.stringAfter's list is a type error ("cannot coerce a function to a
+    # string"). Ordering is lexicographic by attribute name instead, which for
+    # these four scripts is already the order we want:
+    #   astra-ab, astra-secrets, astra-snapshot, astra-snapshot-prune
+    # ('e' < 'n', so "astra-secrets" sorts before "astra-snapshot").
+    system.activationScripts.astra-secrets = ''
+      mkdir -p ${cfg.dir}
+      chmod ${cfg.mode} ${cfg.dir}
+    ''
     + lib.concatMapStrings (
       s:
       let

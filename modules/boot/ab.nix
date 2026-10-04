@@ -366,7 +366,7 @@ in
     # Every switch marks the generation it activated as "testing". This is the
     # line that makes the whole thing work; if it fails to run, a new generation
     # silently becomes the default with nobody watching it.
-    system.activationScripts.astra-ab = lib.stringAfter [ "astra-secrets" ] ''
+    system.activationScripts.astra-ab = ''
       if command -v astra-boot >/dev/null 2>&1; then
         astra-boot pending >/dev/null 2>&1 ||
           logger -t astra "could not arm the A/B guard (see: journalctl -u astra-boot-arm)"
