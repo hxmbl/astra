@@ -56,6 +56,9 @@ ASTRA_BOOT_CONF=${ASTRA_BOOT_CONF:-$ASTRA_LIB_DIR/boot.conf}
 ASTRA_STATE_DIR=${ASTRA_STATE_DIR:-/var/lib/astra}
 ASTRA_HEALTH_DIR=${ASTRA_HEALTH_DIR:-$ASTRA_LIB_DIR/health.d}
 ASTRA_PROFILES=${ASTRA_PROFILES:-/nix/var/nix/profiles}
+# Overridable so the test harness can point it at a fake system, and so the tool
+# still works in a rescue environment where /run/current-system is not set.
+ASTRA_CURRENT_SYSTEM=${ASTRA_CURRENT_SYSTEM:-/run/current-system}
 
 ASTRA_STATE=$ASTRA_STATE_DIR/state
 ASTRA_CMDLINE_DIR=$ASTRA_STATE_DIR/cmdline
@@ -94,7 +97,10 @@ die() {
   exit 1
 }
 need_root() {
-  [ "$(id -u)" = 0 ] || die "astra-boot needs root for this (try sudo)"
+  # ASTRA_TESTING exists so .ci/astra-boot-test.sh can exercise the state
+  # machine as a normal user. It changes nothing about what the commands do.
+  [ "$(id -u)" = 0 ] || [ -n "${ASTRA_TESTING:-}" ] ||
+    die "astra-boot needs root for this (try sudo)"
 }
 
 # -------------------------------------------------------------- generations --
@@ -111,6 +117,12 @@ newest_generation() {
   generations | tr ' ' '\n' | tail -n 1
 }
 
+# Newest first. sort -rn rather than tac because generation numbers are numbers
+# and this has to work in the rescue shell too.
+newest_first() {
+  generations | tr ' ' '\n' | grep -v '^$' | sort -rn
+}
+
 # The store path of a generation's system closure.
 closure() {
   local n=$1
@@ -120,7 +132,7 @@ closure() {
 # Which generation am I right now?
 current_gen() {
   local link base
-  link=$(readlink /run/current-system 2>/dev/null)
+  link=$(readlink "$ASTRA_CURRENT_SYSTEM" 2>/dev/null)
   if [ -n "$link" ]; then
     base=$(basename "$link")
     base=${base#system-}
@@ -132,7 +144,7 @@ current_gen() {
   # Fall back to matching the running closure against the profile links, which
   # is what you have to do from a rescue system or a chroot.
   local target n
-  target=$(readlink -f /run/current-system 2>/dev/null)
+  target=$(readlink -f "$ASTRA_CURRENT_SYSTEM" 2>/dev/null)
   for n in $(generations); do
     if [ "$(closure "$n")" = "$target" ]; then
       printf '%s' "$n"
@@ -178,6 +190,15 @@ state_set() {
   # Sort so a diff of the state file is readable.
   sort -o "$tmp" "$tmp" 2>/dev/null || true
   mv "$tmp" "$ASTRA_STATE" 2>/dev/null || true
+  # Keep the in-memory copy in step with the file. entry_title, write_entries and
+  # set_default_entry all read these as shell variables instead of re-sourcing
+  # the state, so without this a freshly promoted generation still gets labelled
+  # with the *previous* stable one's name, and the boot default is set to a
+  # string that does not exist in the menu.
+  case "$key" in
+    "" | [!A-Za-z_]* | *[!A-Za-z0-9_]*) ;;
+    *) printf -v "$key" '%s' "$val" 2>/dev/null || true ;;
+  esac
 }
 
 state_clear() {
@@ -281,25 +302,38 @@ write_entries() {
 
 # Point the boot menu's default at a generation.
 set_default_entry() {
-  local want=$1 title
+  local want=$1 title n
   command -v bootctl >/dev/null 2>&1 || {
     log "bootctl not available; cannot set the default boot entry"
     return 1
   }
   title=$(entry_title "$want")
-  if bootctl set-default "$title" 2>/dev/null; then
+
+  # Check the entry exists before asking bootctl to point at it. The stable
+  # generation can lose its kernel to the garbage collector, and bootctl's
+  # behaviour for an unknown title varies; relying on it to fail is how you end
+  # up with a boot menu whose default matches nothing.
+  local esp
+  esp=$(esp_mount 2>/dev/null) || esp=${ASTRA_ESP:-}
+  if [ -n "$esp" ] && [ ! -e "$esp/loader/entries/astra-$want.conf" ]; then
+    log "generation $want has no boot entry (its kernel is probably gone); falling back"
+  elif bootctl set-default "$title" 2>/dev/null; then
     log "boot default set to '$title'"
     return 0
   fi
-  # The stable generation may have lost its kernel to the garbage collector. In
-  # that case the newest generation that *does* have one is a better default than
-  # no default at all.
-  local n
-  for n in $(generations | tr ' ' '\n' | tac); do
+
+  # The generation we wanted is unusable. The newest one that does have a kernel
+  # is a far better default than no default at all — and it is what the machine
+  # is about to boot, so it becomes the stable one rather than leaving a dead
+  # generation as the thing we keep rolling back to. Entries are rewritten first
+  # so the title handed to bootctl is the one actually in the menu.
+  for n in $(newest_first); do
     [ -e "$(closure "$n")/kernel" ] || continue
+    state_set stable "$n"
+    write_entries >/dev/null
     title=$(entry_title "$n")
     if bootctl set-default "$title" 2>/dev/null; then
-      log "boot default set to '$title' (fallback: generation $want is unusable)"
+      log "boot default set to '$title' (generation $want was unusable; $n is now stable)"
       return 0
     fi
   done
@@ -348,7 +382,7 @@ cmd_status() {
   echo "  esp        ${ASTRA_ESP:-<auto>}"
   echo
   printf '  %-6s %-10s %s\n' "gen" "state" "kernel"
-  for n in $(generations | tr ' ' '\n' | tac); do
+  for n in $(newest_first); do
     local mark=" "
     [ "${stable:-}" = "$n" ] && mark="*"
     [ "${testing:-}" = "$n" ] && mark="~"
@@ -363,7 +397,7 @@ cmd_status() {
 
 cmd_generations() {
   local n
-  for n in $(generations | tr ' ' '\n' | tac); do
+  for n in $(newest_first); do
     printf '%s\t%s\n' "$n" "$(closure "$n")"
   done
 }
@@ -435,7 +469,7 @@ cmd_health() {
 # Called by astra-boot-guard.timer. The only place that promotes or rolls back.
 cmd_guard() {
   need_root
-  local n now
+  local n now count since
   n=$(current_gen 2>/dev/null) || return 0
   state_load
 
@@ -445,7 +479,6 @@ cmd_guard() {
   fi
 
   if run_checks; then
-    local since
     now=$(date +%s)
     since=${healthy_since:-0}
     if [ "$since" = 0 ]; then
@@ -461,13 +494,16 @@ cmd_guard() {
     return 0
   fi
 
-  local failures
-  failures=$((${failures:-0} + 1))
-  state_set failures "$failures"
-  if [ "$failures" -ge "$ASTRA_FAILURES" ]; then
-    rollback "health checks failed $failures times"
+  # Deliberately not `local failures`: state_load put the running count in a
+  # shell variable of exactly that name, and `local failures` would shadow it with
+  # an empty string on every run. The counter would then never get past 1 and
+  # the machine would never roll back.
+  count=$(( ${failures:-0} + 1 ))
+  state_set failures "$count"
+  if [ "$count" -ge "$ASTRA_FAILURES" ]; then
+    rollback "health checks failed $count times"
   else
-    log "guard: health failed ($failures/$ASTRA_FAILURES); not rolling back yet"
+    log "guard: health failed ($count/$ASTRA_FAILURES); not rolling back yet"
   fi
 }
 
@@ -501,18 +537,38 @@ cmd_promote() {
 # the old system is still exactly there; there is nothing to roll back in a
 # transactional system, only a choice about which one to start.
 rollback() {
-  local reason=${1:-manual} target
+  local reason=${1:-manual} target from prev had_stable=0
   state_load
+  from=$(current_gen 2>/dev/null)
   target=${stable:-}
-  [ -n "$target" ] || target=$(newest_generation)
+
+  if [ -n "$target" ]; then
+    had_stable=1
+  else
+    # Nothing has ever been promoted on this machine, which on a first boot means
+    # the generation on trial *is* the newest one — and rolling back into the
+    # generation that just failed its health checks is not a rollback. Take the
+    # newest generation that is neither of those.
+    log "nothing has been promoted yet; picking a fallback generation"
+    for prev in $(newest_first); do
+      [ "$prev" = "$from" ] && continue
+      [[ " ${failed:-} " == *" $prev "* ]] && continue
+      [ -e "$(closure "$prev")/kernel" ] || continue
+      target=$prev
+      break
+    done
+    [ -n "$target" ] || target=$from
+    state_set stable "$target"
+  fi
   [ -n "$target" ] || die "no generations at all; nothing to roll back to"
 
-  if [ "$(current_gen 2>/dev/null)" = "$target" ]; then
-    # Already on the good one: try to step back to the previous good one so that
-    # a manual rollback is actually a rollback.
-    local prev
-    for prev in $(generations | tr ' ' '\n' | tac); do
-      [ "$prev" = "$target" ] && continue
+  if [ "$had_stable" = 1 ] && [ "$from" = "$target" ]; then
+    # Already on the generation we consider good, so a manual rollback means
+    # "give me the one before this". Only *older* generations qualify: "back"
+    # must not mean "different", or a machine pinned to an old generation would
+    # roll forward into a newer one.
+    for prev in $(newest_first); do
+      [ "$prev" -lt "$target" ] 2>/dev/null || continue
       [[ " ${failed:-} " == *" $prev "* ]] && continue
       [ -e "$(closure "$prev")/kernel" ] || continue
       target=$prev
@@ -520,14 +576,11 @@ rollback() {
       log "already on the stable generation; stepping back to $target"
       break
     done
-  else
-    # The generation we are leaving gets the "failed" label so the boot menu
-    # says so. The one we are rolling *to* stays clean.
-    local from
-    from=$(current_gen 2>/dev/null)
-    if [ -n "$from" ]; then
-      state_set failed "$(echo "${failed:-} $from" | tr -s ' ' | sed 's/^ //;s/ $//')"
-    fi
+  elif [ -n "$from" ]; then
+    # We are leaving a generation that was not the stable one — almost always
+    # because its health checks failed. Label it so the boot menu says so and
+    # nobody picks it by accident.
+    state_set failed "$(echo "${failed:-} $from" | tr -s ' ' | sed 's/^ //;s/ $//')"
   fi
 
   state_clear testing
@@ -589,7 +642,7 @@ cmd_recover() {
   echo "  running: $cur    stable: ${stable:-<none>}"
   echo
   printf '  %-4s %-10s %s\n' "gen" "state" "closure"
-  for n in $(generations | tr ' ' '\n' | tac); do
+  for n in $(newest_first); do
     printf '  %-4s %-10s %s\n' "$n" "$(entry_title "$n" | sed 's/Astra n=[0-9]* *//')" "$(closure "$n")"
   done
   echo
