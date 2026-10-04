@@ -55,11 +55,13 @@ in
     # two modules setting the same attribute is an eval error, not a merge.
 
     # -------------------------------------------------------------- input ---
-    # Tap-to-click is not on by default in NixOS and turning it on in System
-    # Settings is the sort of thing you rediscover every fresh install.
+    # The submodule is enable + mouse + touchpad (libinput.nix:425), and
+    # tap-to-click is `clickMethod` under touchpad — an enum of
+    # none | buttonareas | clickfinger (line 158). A flat `tap-to-click` key
+    # does not exist on this option.
     services.libinput = {
       enable = true;
-      tap-to-click = true;
+      touchpad.clickMethod = "clickfinger";
     };
 
     # -------------------------------------------------------------- fonts ---
