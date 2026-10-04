@@ -184,7 +184,7 @@ in
       type = lib.types.listOf lib.types.str;
       # A desktop is only healthy if you can log into it. Nothing is required of
       # a headless machine: nothing about it should decide to reboot the box.
-      default = lib.optional config.astra.desktop "greetd.service";
+      default = lib.optional config.astra.desktop.enable "greetd.service";
       description = "systemd units that must be active for a generation to count as healthy.";
     };
 
@@ -239,8 +239,12 @@ in
           text = ''
             # astra recovery session: a root shell on tty1, no password, no
             # display. Pick it at the login screen with Tab.
+            #
+            # greetd runs the command itself on the tty it has already set up,
+            # so this is a shell, not an agetty — nesting agetty inside a greeter
+            # session means two things fighting over the same tty.
             [command]
-            command = "${pkgs.util-linux}/bin/agetty --nologin --login-program ${pkgs.bash}/bin/bash --noclear tty1"
+            command = "${pkgs.bash}/bin/bash --login"
             user = "root"
             type = "tty"
 
@@ -257,7 +261,7 @@ in
             # A plain console login for ${config.astra.user}, for when the desktop
             # is the thing that is broken.
             [command]
-            command = "${pkgs.util-linux}/bin/agetty --login-program ${pkgs.zsh} -l ${config.astra.user} --noclear tty2"
+            command = "${pkgs.zsh} -l"
             user = "${config.astra.user}"
             type = "tty"
 

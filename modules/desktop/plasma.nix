@@ -48,10 +48,9 @@ in
     # ---------------------------------------------------------- power/udev --
     services.upower.enable = true; # battery reporting without TLP fighting it
     services.udisks2.enable = true; # mounting disks from the Plasma UI
-    services.logind.extraConfig = ''
-      HandleLidSwitch=suspend
-      HandleLidSwitchExternalPower=ignore
-    '';
+    # Lid/power-key handling is set with the typed options in
+    # profiles/base.nix. Do not use services.logind.extraConfig here as well:
+    # two modules setting the same attribute is an eval error, not a merge.
 
     # -------------------------------------------------------------- input ---
     # Tap-to-click is not on by default in NixOS and turning it on in System

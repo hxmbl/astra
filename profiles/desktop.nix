@@ -45,7 +45,7 @@ in
 
   config = lib.mkIf cfg.enable {
     astra.profiles = [ "desktop" ];
-    astra.desktop = true;
+    astra.desktop.enable = true;
 
     astra.userGroups = [ "video" "audio" "input" "render" ];
 

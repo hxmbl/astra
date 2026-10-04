@@ -64,8 +64,11 @@ in
         ${cfg.user} = {
           imports = [ ../../home ];
           # `desktop` is the single flag home/ needs to decide whether it is
-          # managing a desktop or a shell on a server.
-          astra.desktop.enable = cfg.desktop;
+          # managing a desktop or a shell on a server. mkDefault so that
+          # profiles/desktop.nix setting it to true is not a second definition
+          # of the same attribute — the module system treats two plain
+          # definitions of one option as a conflict.
+          astra.desktop.enable = lib.mkDefault cfg.desktop.enable;
           astra.userName = cfg.user;
         };
       };

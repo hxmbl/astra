@@ -95,13 +95,10 @@
   };
 
   # --------------------------------------------------------------- keyboard --
-  # A laptop keyboard's firmware sends brightness/volume keys as ordinary
-  # keycodes; Plasma's PowerDevil reads the right ones but only if libinput
-  # knows about the media keys.
-  services.logind.extraConfig = ''
-    HandlePowerKey=suspend
-    HandleLidSwitch=suspend
-  '';
+  # The lid switch, power key and idle behaviour are all set with the typed
+  # logind options in profiles/base.nix. A laptop keyboard's brightness and
+  # volume keys are read by Plasma's own PowerDevil, so there is no keybinding
+  # to add here.
 
   system.stateVersion = "24.11";
 }

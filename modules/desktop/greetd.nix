@@ -12,7 +12,7 @@ let
   cfg = config.astra;
 in
 {
-  config = lib.mkIf (cfg.enable && cfg.desktop) {
+  config = lib.mkIf (cfg.enable && cfg.desktop.enable) {
     services.greetd = {
       enable = true;
       settings = {
@@ -25,5 +25,14 @@ in
         };
       };
     };
+
+    # greetd looks for named sessions in $XDG_DATA_DIRS/greetd/session, and
+    # nothing on NixOS puts /etc/xdg on that list by default. Without this line
+    # the recovery sessions that astra-boot installs are silently never found,
+    # which is exactly the kind of thing that looks like it works right up until
+    # the day you need it. This one line is what makes "press Tab at the login
+    # screen" true.
+    systemd.services.greetd.environment.XDG_DATA_DIRS =
+      "/etc/xdg:/run/current-system/sw/share";
   };
 }

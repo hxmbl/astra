@@ -35,7 +35,7 @@ let
     nixpkgs=${config.system.nixos.version}
     nixpkgsRev=${if config.nixpkgs.revision == null then "unknown" else config.nixpkgs.revision}
     user=${cfg.user}
-    desktop=${if cfg.desktop then "true" else "false"}
+    desktop=${if cfg.desktop.enable then "true" else "false"}
   '';
 in
 {
@@ -110,10 +110,16 @@ in
       '';
     };
 
-    desktop = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "True on hosts running the KDE desktop. Set by profiles/desktop.nix.";
+    desktop = {
+      # Declared as a namespace, not a bare bool, because profiles/desktop.nix
+      # adds astra.desktop.vendorTools underneath it. A parent option declared
+      # with a leaf type (`type = bool`) cannot have children — that is an eval
+      # error, and an obscure one.
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "True on hosts running the KDE desktop. Set by profiles/desktop.nix.";
+      };
     };
 
     profiles = lib.mkOption {
@@ -176,8 +182,7 @@ in
         description = "Merged last into `services.openssh.settings`; hosts add keys and policy here.";
       };
     };
-
-    };
+  };
 
   config = lib.mkIf cfg.enable {
     astra.profiles = [ "base" ];
