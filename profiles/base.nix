@@ -245,7 +245,13 @@ in
         SystemMaxUse=2G
       '';
     };
-    services.logind = {
+    services.logind.settings.Login = {
+      # These are logind.conf keys, so they belong under settings.Login — a
+      # freeform submodule whose own nixpkgs example is
+      # { KillUserProcesses = false; HandleLidSwitch = "ignore"; }.
+      # services.logind itself only declares `enable` and `settings.Login`, and
+      # services.logind.extraConfig was removed outright.
+      #
       # Suspend far enough out to close the lid without draining the battery.
       IdleAction = "ignore";
       HandlePowerKey = "suspend";
