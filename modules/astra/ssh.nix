@@ -22,10 +22,15 @@ in
       settings = {
         # No root login, no X11 forwarding (we are Wayland), no keyboard-interactive
         # auth. Servers tighten PasswordAuthentication further.
+        #
+        # Types matter here: settings is freeform (so Compression and the
+        # ClientAlive* keys take plain strings), but the keys nixpkgs declares
+        # are checked. X11Forwarding and KbdInteractiveAuthentication are
+        # `nullOr bool` (sshd.nix:536, :565), PermitRootLogin is an enum that
+        # does include "no" (:550).
         PermitRootLogin = "no";
-        X11Forwarding = "no";
-        KbdInteractiveAuthentication = "no";
-        # Compression costs CPU on a LAN.
+        X11Forwarding = false;
+        KbdInteractiveAuthentication = false;
         Compression = "no";
         ClientAliveInterval = "120";
         ClientAliveCountMax = "3";
