@@ -38,6 +38,7 @@
   # A house controller is a server: it should never bounce itself because a
   # health check failed while you are not there to notice.
   astra.ab = {
+    enable = true; # the default assumes systemd-boot; this box boots grub
     supportBootEntries = false;
     reboot = false;
     requireNetwork = true;

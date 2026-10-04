@@ -37,6 +37,9 @@
   networking.firewall.allowedTCPPorts = [ 22 ];
 
   astra.ab = {
+    # enable explicitly: the default is "on if systemd-boot is the loader", and
+    # this box boots grub.
+    enable = true;
     # grub owns the boot menu here, so astra does not try to rewrite it.
     supportBootEntries = false;
     # Log, never reboot. A server that bounces itself because a health check

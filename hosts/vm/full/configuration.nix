@@ -22,7 +22,10 @@
   # generations and runs the health guard under grub, but there is no menu for
   # it to rewrite, so this VM is a fair test of "does the desktop come up",
   # not of rollback.
-  astra.ab.supportBootEntries = false;
+  astra.ab = {
+    enable = true;
+    supportBootEntries = false;
+  };
 
   fileSystems."/" = {
     device = "/dev/sda1";

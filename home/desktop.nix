@@ -37,8 +37,16 @@
       confirm-close-surface = false
     '';
 
-    # -------------------------------------------------------------- zen -----
-    xdg.configFile."zen/policies.json".text = ''
+    # ------------------------------------------------------------ browsers ---
+    # Firefox-derived browsers read enterprise policies from `policies.json`
+    # *inside a profile directory*, whose name is random
+    # (~/.zen/abc123.default-release). Dropping the file in ~/.config does
+    # nothing at all — a detail that quietly wastes an evening.
+    #
+    # So: one canonical copy here, and a home-manager activation step that
+    # symlinks it into every profile that exists. New profiles get it on the
+    # next activation, which is close enough to instant and always inspectable.
+    xdg.configFile."astra/browser-policies.json".text = ''
       {
         "policies": {
           "DisableTelemetry": true,
@@ -81,13 +89,20 @@
       }
     '';
 
-    # firefox from nixpkgs reads the same file, but from its own distribution
-    # directory; HM's module puts it there.
-    programs.firefox = {
-      enable = true;
-      policies.privacy.reduceTimerPrecision = false;
-      policies."DisableFirefoxStudies".enabled = true;
-    };
+    programs.firefox.enable = true;
+
+    # After installPackages, because that is what links ~/.config/astra into place.
+    home.activation.astraBrowserPolicies = lib.mkAfter [ "installPackages" ] ''
+      # Point every browser profile at the one policy file astra manages.
+      # Idempotent: an existing symlink is simply replaced.
+      policies="$HOME/.config/astra/browser-policies.json"
+      if [ -r "$policies" ]; then
+        for dir in "$HOME"/.zen/*.default* "$HOME"/.mozilla/firefox/*.default*; do
+          [ -d "$dir" ] || continue
+          ln -sfn "$policies" "$dir/policies.json"
+        done
+      fi
+    '';
 
     # -------------------------------------------------------------- zed -----
     # Unknown keys are ignored by Zed, so this file is safe to grow.

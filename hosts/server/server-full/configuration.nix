@@ -56,6 +56,7 @@
   services.rustdesk.enable = true;
 
   astra.ab = {
+    enable = true; # the default assumes systemd-boot; this box boots grub
     supportBootEntries = false; # grub owns the boot menu on this box
     reboot = false; # it runs other people's services; never bounce it
     # This is the one machine where "is the network up" is a real health
