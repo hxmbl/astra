@@ -171,6 +171,13 @@ in
 
     astra.packages = lib.mkIf cfg.esphome.enable [ pkgs.esphome ];
 
+    # The broker listens on the LAN, so the LAN has to be able to reach it.
+    # Caddy (imported above) opens 80/443; this is the one port that has to be
+    # open for the house to have any sensors at all.
+    networking.firewall = lib.mkIf cfg.mqtt.enable {
+      allowedTCPPorts = [ (toString cfg.mqtt.port) ];
+    };
+
     # ---------------------------------------------------------------- zigbee --
     virtualisation.oci-containers = lib.mkIf cfg.zigbee.enable {
       backend = "docker";

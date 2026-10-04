@@ -137,16 +137,28 @@ local MQTT broker, ESPHome for writing your own firmware, and no account
 anywhere. It is reachable over the tailnet without opening a port. See
 `modules/astra/home.nix`.
 
-## formatting
+## formatting and checking
 
 ```bash
-nix fmt          # alejandra
-python3 .ci/nix-balance.py   # structural check on hand-written Nix
+nix fmt                      # alejandra
+python3 .ci/nix-balance.py   # bracket/string structure of every .nix file
+bash .ci/astra-boot-test.sh  # the A/B state machine, against a fake store
+python3 .ci/nix-conflicts.py # attributes claimed by more than one file
 ```
 
-The checker exists because this repo gets edited without being evaluated; it
-catches stray braces and unterminated strings. It is not a parser and knows
-nothing about module options.
+None of these need nix, and all of them run in a second or two. They exist
+because this repo gets edited without being evaluated:
+
+- `nix-balance.py` catches stray braces and unterminated strings. It is not a
+  parser and knows nothing about module options.
+- `astra-boot-test.sh` drives the real `astra-boot` through switch → boot →
+  trial → promote and through failure → rollback, with a fake `/nix` store. It
+  found five real bugs when it was written, including a `local` that shadowed
+  the failure counter and meant the machine would never actually roll back.
+- `nix-conflicts.py` is noisy and reports paths more than one file assigns. Most
+  are lists and attrsets, which merge; the ones that matter are the ones where
+  two modules write the same option with different values, which is a hard eval
+  error.
 
 ## status
 
