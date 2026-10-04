@@ -10,15 +10,11 @@ in
 {
   config = lib.mkIf cfg.enable {
     # ------------------------------------------------------------- session --
-    services.desktopManager.plasma6 = {
-      enable = true;
-      # Without a polkit agent every "do you want to remount /" dialog silently
-      # never appears, which is the single most common "KDE is broken" report.
-      polkitAgent.enable = true;
-      # Plasma 6 is Wayland; XWayland is still pulled in by the session itself
-      # for the apps that need it (older Electron, some CAD tools).
-      xserver.enable = false;
-    };
+    # `enable` is the whole interface. This nixpkgs has no
+    # services.desktopManager.plasma6.polkitAgent and no .xserver — enabling
+    # Plasma already brings in polkit-kde-agent-1 (plasma6.nix:117) and turns on
+    # XWayland (line 72), which is what the old apps need.
+    services.desktopManager.plasma6.enable = true;
 
     # KDE is a Wayland session, so the graphics stack has to be in place for
     # anything but a framebuffer.
@@ -28,13 +24,19 @@ in
     };
 
     # --------------------------------------------------------- portalling --
-    xdg-desktop-portal = {
-      enable = true;
-      # gtk covers Qt/GTK apps, plasma covers Plasma's own (screenshare, the
-      # file chooser, global shortcuts). `plasma` here is xdg-desktop-portal-kde,
-      # which ships inside plasma-workspace.
-      extraPortals = [ "gtk" "plasma" ];
-    };
+    # The option namespace is xdg.portal, not xdg-desktop-portal
+    # (nixos/modules/config/xdg/portal.nix:38) — there is no `xdg-desktop-portal`
+    # option at all.
+    #
+    # And enabling Plasma already sets enable, extraPortals (kwallet,
+    # xdg-desktop-portal-kde, xdg-desktop-portal-gtk) and configPackages
+    # (plasma6.nix:294-300). Setting them again with different values is at best
+    # redundant; the list below would have replaced the module's own. Left
+    # alone on purpose.
+    #
+    # If screen sharing or the file dialog misbehaves, the thing to check first
+    # is that xdg-desktop-portal-kde is in xdg.portal.extraPortals, which it
+    # already is.
 
     # ------------------------------------------------------------- audio ---
     services.pipewire = {
