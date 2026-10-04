@@ -52,13 +52,13 @@
 
       # Passing the whole input set as specialArgs means any module can reach
       # zen-browser/cursor without flake.nix growing per-host specialArgs.
+      #
+      # One argument only. The flake inputs are already bound by the outer
+      # `outputs` function, so a second parameter would leave every host as an
+      # unapplied function: `nixosConfigurations.<name>` evaluates to a lambda
+      # rather than a system, and nothing in the flake is usable.
       mkHost =
         path:
-        {
-          nixpkgs,
-          home-manager,
-          ...
-        }:
         lib.nixosSystem {
           inherit system;
           specialArgs = inputs // {
