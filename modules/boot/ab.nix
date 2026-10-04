@@ -39,7 +39,7 @@ let
   defaultChecks =
     [
       {
-        name = "10-store.check"
+        name = "10-store.check";
         script = ''
           # The store is the system. If this is gone there is nothing to roll
           # back to and the machine is already in recovery, so fail loudly
@@ -52,7 +52,7 @@ let
         '';
       }
       {
-        name = "20-rootfs.check"
+        name = "20-rootfs.check";
         script = ''
           # A read-only root means activation silently half-worked. It also means
           # the next switch cannot fix anything, so this is worth a reboot.
@@ -64,7 +64,7 @@ let
         '';
       }
       {
-        name = "30-units.check"
+        name = "30-units.check";
         script = ''
           failed=0
           for unit in ${lib.concatStringsSep " " cfg.requiredUnits}; do
@@ -79,7 +79,7 @@ let
       }
     ]
     ++ lib.optional cfg.requireNetwork {
-      name = "40-network.check"
+      name = "40-network.check";
       script = ''
         # Only a check when you asked for one: a laptop with the wifi off is
         # perfectly healthy, and rolling a generation back because of it would
@@ -96,7 +96,7 @@ let
       '';
     }
     ++ lib.optional (cfg.supportBootEntries && config.boot.loader.systemd-boot.enable) {
-      name = "05-bootloader.check"
+      name = "05-bootloader.check";
       script = ''
         # If the boot menu cannot be rewritten we cannot promise a rollback, so
         # this is a first-class health check rather than a hope.

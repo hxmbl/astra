@@ -65,9 +65,10 @@ in
       )
       ++ [
         # Zen is a Firefox fork we can build from source; nixpkgs' firefox is
-        # the boring fallback when a site breaks.
+        # the boring fallback when a site breaks. `pkgs.` is spelled out
+        # because this list is not inside a `with pkgs;`.
         zen-browser.packages.${system}.default
-        firefox
+        pkgs.firefox
       ];
   };
 }
