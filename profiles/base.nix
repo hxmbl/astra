@@ -230,7 +230,7 @@ in
     };
     # Lets unpatched binaries (vendor Electron apps mostly) find their
     # libraries. One extra service, saves a class of "why won't this launch".
-    services.nix-ld.enable = true;
+    programs.nix-ld.enable = true;
     services.fstrim.enable = true;
 
     # -------------------------------------------------------------- logging --
