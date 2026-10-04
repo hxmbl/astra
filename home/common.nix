@@ -88,11 +88,17 @@
 
   programs.tmux = {
     enable = true;
+    # Not `options = [ ... ]`: home-manager has no such key. These are the
+    # typed options (home-manager/modules/programs/tmux.nix): historyLimit is
+    # ints.positive (line 223), focusEvents is bool (213), baseIndex is
+    # ints.unsigned (163), keyMode is an enum (230), prefix is nullOr str (276).
     mouse = true;
     baseIndex = 1;
     keyMode = "vi";
     prefix = "C-a";
-    options = [ "history-limit=50000" "escape-time=0" "focus-events on" ];
+    historyLimit = 50000;
+    escapeTime = 0;
+    focusEvents = true;
   };
 
   programs.zoxide = {

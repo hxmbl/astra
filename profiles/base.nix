@@ -192,12 +192,20 @@ in
       isNormalUser = true;
       description = "astra";
       extraGroups = cfg.userGroups;
-      # shell comes from /etc/shells via zsh below; keep it explicit so the
-      # account is usable even before home-manager has run.
       shell = pkgs.zsh;
     } // lib.optionalAttrs (cfg.initialPassword != "") {
       initialPassword = cfg.initialPassword;
     };
+
+    # The account's shell is zsh, and home-manager only enables zsh in the
+    # *home* namespace, which the shell assertion cannot see. Without this the
+    # system asserts:
+    #   users.users.user.shell is set to zsh, but programs.zsh.enable is not
+    #   true. This will cause the zsh shell to lack the basic nix directories
+    #   in its PATH and might make logging in as that user impossible.
+    # programs.zsh.enable here adds zsh system-wide and puts it in /etc/shells;
+    # home-manager's programs.zsh.enable then adds the configuration.
+    programs.zsh.enable = true;
 
     # ---------------------------------------------------------------- locale --
     i18n.defaultLocale = "en_US.UTF-8";
