@@ -200,7 +200,7 @@ in
         # The coordinator is on USB, so the container gets that device node and
         # nothing else. Host networking because it talks to the broker over
         # loopback, same as the other services on this box.
-        networking = "host";
+        networks = [ "host" ];
         extraOptions = [ "--device=${cfg.zigbee.device}" ];
         volumes = [
           "zigbee2mqtt-data:/app/data"

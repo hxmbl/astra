@@ -70,14 +70,14 @@ in
 
       containers.searxng-valkey = {
         image = "valkey/valkey:9-alpine";
-        networking = "host";
+        networks = [ "host" ];
         volumes = [ "searxng-valkey:/data" ];
         autoStart = true;
       };
 
       containers.searxng = {
         image = "searxng/searxng:latest";
-        networking = "host";
+        networks = [ "host" ];
         volumes = [ "${cfg.settingsDir}:/etc/searxng:rw" ];
         environmentFiles = [ "${config.astra.secrets.dir}/searxng-secret.env" ];
         environment = {

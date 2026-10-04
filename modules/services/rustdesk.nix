@@ -79,7 +79,7 @@ in
           "-r"
           "${config.networking.hostName}:${toString cfg.ports.hbbs}"
         ];
-        networking = "host";
+        networks = [ "host" ];
         environmentFiles = [ "${config.astra.secrets.dir}/rustdesk-key.env" ];
         volumes = [ "rustdesk-data:/root" ];
         autoStart = true;
@@ -88,7 +88,7 @@ in
       containers.rustdesk-hbbr = {
         image = "rustdesk/rustdesk-server:latest";
         cmd = [ "hbbr" ];
-        networking = "host";
+        networks = [ "host" ];
         environmentFiles = [ "${config.astra.secrets.dir}/rustdesk-key.env" ];
         volumes = [ "rustdesk-data:/root" ];
         autoStart = true;
