@@ -115,7 +115,12 @@ in
       # (`config.recorder = {};`, `config.mqtt = {};`), but Nix rewrites the
       # whole config file on every rebuild, so anything you add in the UI by
       # hand will be clobbered. That is the trade and it is deliberate.
-      config.defaultConfig = { };
+      # NB: `config` is a freeform submodule, so a misspelled key is not an eval
+      # error — it silently becomes a YAML key that Home Assistant ignores. HA
+      # integration domains are snake_case: `default_config`, not
+      # `defaultConfig`. nixpkgs' own example for this option uses
+      # homeassistant/frontend/http/feedreader.
+      config.default_config = { };
       config.lufia = { };
     };
 
