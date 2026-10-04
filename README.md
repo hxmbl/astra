@@ -1,82 +1,154 @@
 # astra
+
 The abstract "Operating System." Everything. One "insecure" place.
 <sub>(Yes its just NixOS with stuff)</sub>
 
 ## what
-A NixOS flake that describes every machine I own. One repo, one source of truth, zero excuses.
+
+A NixOS flake that describes every machine I own: a laptop, a house, two
+servers and some VMs for testing changes I do not want to try on real
+hardware. One repo, one source of truth, zero excuses.
 
 ## why
-Because reinstalling is a skill issue.
 
-## quick start
-```bash
-# from any NixOS live env or existing NixOS install
-bash <(curl -s https://raw.githubusercontent.com/Hxmbl/astra/main/install.sh) vm-nano
+Because reinstalling is a skill issue. And because "it worked yesterday" should
+be something a machine can prove on its own, without me in the room.
+
+## the shape of it
+
+```
+astra/
+├── flake.nix           every host is one line in a directory listing
+├── profiles/
+│   ├── base.nix        the root: declares the astra.* options, sets up the account
+│   ├── core.nix        dev toolchain, docker, tailnet, home-manager
+│   └── desktop.nix     KDE Plasma 6, Ghostty, Zed
+├── modules/
+│   ├── astra/          cross-cutting: ssh, secrets, home automation
+│   ├── boot/           ab.nix, snapshots.nix, bin/astra-boot
+│   ├── desktop/        plasma.nix, greetd.nix
+│   └── services/       caddy, searxng, dashdot, rustdesk
+├── home/               home-manager: common.nix + desktop.nix
+├── hosts/<machine>/configuration.nix
+├── lib/                small things shared between the flake and the modules
+└── DECISIONS.md        why things are the way they are, and what else was possible
 ```
 
-or clone and run manually:
+A host imports one profile and a couple of modules. That is the whole contract:
+
+| want to change | edit this |
+|---|---|
+| username, groups, hostname | `profiles/base.nix` + the host |
+| what every machine has | `profiles/base.nix` — `astra.packages` |
+| what a workstation adds | `profiles/core.nix` |
+| what a desktop adds | `profiles/desktop.nix` |
+| packages on one machine | the host — `astra.packages` |
+| *removing* a package | the host — `astra.dropPackages = [ pkgs.thing ]` |
+| a service | a new file in `modules/services/` |
+| terminal, shell, prompt, git | `home/common.nix` |
+| browser policy, Zed, Plasma look | `home/desktop.nix` |
+| what counts as "this generation works" | `modules/boot/ab.nix` — `astra.ab.checks` |
+| the secrets directory | `modules/astra/secrets.nix` |
+
+## machines
+
+| host | profile | notes |
+|---|---|---|
+| laptop | desktop | systemd-boot, A/B boot, recovery, snapshots off (ext4) |
+| astra-home | core + home | Home Assistant, MQTT, no cloud, never reboots itself |
+| server-full | core | caddy ingress, searxng, dashdot, rustdesk |
+| server-core | base | ssh and nothing else |
+| vm-nano | base | throwaway, for testing the flake itself |
+| vm-mini | core | dev toolchain, no display |
+| vm-full | desktop | KDE in a VM; a fair test of the desktop, not of rollback |
+
+## quick start
+
+```bash
+# from a NixOS live environment or an existing install
+bash <(curl -s https://raw.githubusercontent.com/Hxmbl/astra/main/install.sh) laptop
+```
+
+or by hand:
+
 ```bash
 git clone https://github.com/Hxmbl/astra.git && cd astra
 sudo nixos-rebuild switch --flake .#vm-nano
 ```
 
-for laptop (generates hardware config automatically):
+For the laptop, `install.sh` generates and imports `hardware-configuration.nix`
+for you, then tells you to run `nixos-install`.
+
+## log in
+
+default user `user`, default password `nixos`. Run `passwd` and then delete
+`astra.initialPassword` from the host.
+
+## the A/B boot thing, in one paragraph
+
+Every rebuild marks the generation it activated as **on trial**. It boots once.
+Health checks (small shell scripts you can read, in `/etc/astra/health.d`) run
+every twenty seconds; a generation that stays healthy for five minutes becomes
+**stable** and the boot menu is rewritten to default to it. One that fails three
+times in a row gets skipped and the machine reboots itself into the last
+generation that worked. The boot menu lists the last five generations, labelled.
+
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/Hxmbl/astra/main/install.sh) laptop
+astra-info                # what stack is this machine running
+sudo astra-boot status    # which generation is stable, which is on trial, health log
+sudo astra-boot rollback  # go back to the last known-good generation
+sudo astra-boot recover   # interactive recovery menu
+sudo astra-boot health    # run every check once, change nothing
 ```
 
-## login
-default user: `user`
-default password: `nixos`
+Three things make this different from `nixos-rebuild switch --rollback`:
 
-run `passwd` after first login to set your real password.
+- it happens by itself, without anybody logging in and typing
+- it is based on health rather than on "was the last switch recent"
+- the *previous good* generation is guaranteed to be in the boot menu, which is
+  not true of the entries systemd-boot's generator writes (it only knows about
+  generations that were in the build closure)
 
-## customization
-everything lives in `~/astra/`. here's what you'd edit:
+Recovery, from the login screen: press **Tab** in tuigreet for a root shell on
+tty1, or pick `NixOS - Rescue system` from the boot menu. And if the boot goes
+wrong enough that the initrd cannot mount `/`, the kernel asks for a maintenance
+shell instead of going black.
 
-| want to change | edit this |
-|---|---|
-| username | `hosts/<host>/configuration.nix` — `users.users.user` (rename `user` to your name) |
-| password | same file — `initialPassword` |
-| hostname | same file — `networking.hostName` |
-| desktop packages | `profiles/desktop.nix` — `environment.systemPackages` |
-| dev tools | `profiles/core.nix` — `environment.systemPackages` |
-| hyprland binds | `home/default.nix` — `xdg.configFile."hypr/hyprland.conf"` |
-| starship prompt | `home/default.nix` — `programs.starship.settings` |
-| git config | `home/default.nix` — `programs.git` (set `userName` and `userEmail`) |
-| ghostty terminal | `home/default.nix` — `xdg.configFile."ghostty/config"` |
-| hyprlock screen | `home/default.nix` — `xdg.configFile."hypr/hyprlock.conf"` |
-| server services | `hosts/server/configuration.nix` — `virtualisation.oci-containers` |
-| server firewall | same file — `networking.firewall` |
-
-after editing, rebuild:
-```bash
-sudo nixos-rebuild switch --flake ~/astra#<host>
-```
-
-## machines
-| host | profile | status |
-|------|---------|--------|
-| vm-nano | base | working |
-| vm-mini | core | working |
-| vm-full | desktop | working |
-| laptop | desktop | wip |
-| server-full | base | working |
-| server-core | base | working |
-
-## structure
-```
-astra/
-├── flake.nix
-├── install.sh        # one-liner setup
-├── flakes/           # isolated third-party flakes (cursor, zen-browser)
-├── hosts/            # per-machine configs
-├── home/             # home-manager config
-└── profiles/         # base → core → desktop
-```
+Servers get the health checks but never the automatic reboot: a headless box that
+bounces itself because DNS was slow is worse than one that logged it.
 
 ## secrets
-yes please
+
+The flake knows *where* a secret is, never what it is. Anything in a Nix
+expression is world-readable in `/nix/store`, including "secrets".
+
+```nix
+astra.secrets.generate = [{ name = "searxng-secret"; key = "SEARXNG_SECRET"; }];
+```
+
+generates `/var/lib/astra/secrets/searxng-secret.env` on activation if it is not
+there yet, and a service reads it with `environmentFiles`. For the rest, point
+sops/agenix/a systemd credential at the same directory.
+
+## astra home
+
+`astra-home` is the same flake pointed at a house: a local Home Assistant, a
+local MQTT broker, ESPHome for writing your own firmware, and no account
+anywhere. It is reachable over the tailnet without opening a port. See
+`modules/astra/home.nix`.
+
+## formatting
+
+```bash
+nix fmt          # alejandra
+python3 .ci/nix-balance.py   # structural check on hand-written Nix
+```
+
+The checker exists because this repo gets edited without being evaluated; it
+catches stray braces and unterminated strings. It is not a parser and knows
+nothing about module options.
 
 ## status
-Works on my machine. Fix it if it doesn't work for you.
+
+Everything here was written in one sitting and none of it has been evaluated,
+let alone booted. See `MORNING.md` for exactly which parts to distrust first.

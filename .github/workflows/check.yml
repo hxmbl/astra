@@ -1,4 +1,11 @@
 # name: flake check
+#
+# Disabled on 2026-10-04: the desktop profile had a stale option in it, and this
+# turns every push into a red X that nobody looks at. Re-enable it once every
+# host below has been through one real `nixos-rebuild`.
+#
+# The matrix is the same host list as flake.nix and install.sh. A host in one
+# place and not the others is a bad morning.
 
 # on:
 #   push:
@@ -11,11 +18,16 @@
 #     runs-on: ubuntu-latest
 #     strategy:
 #       matrix:
-#         host: [vm-nano, vm-mini, vm-full, server-full, server-core]
+#         host: [vm-nano, vm-mini, vm-full, server-full, server-core, astra-home, laptop]
 #     steps:
 #       - uses: actions/checkout@v4
 #       - uses: cachix/install-nix-action@v27
 #         with:
 #           extra_nix_config: |
 #             accept-flake-config = true
-#       - run: nix build .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel --no-link
+#       # laptop and astra-home carry real hardware assumptions — a root
+#       # filesystem by label, groups that only exist once a package is in the
+#       # closure — that a CI runner does not have. They stay in the matrix so
+#       # they get *evaluated*, which is the part that catches mistakes.
+#       - run: nix flake check --no-build
+#       - run: nix eval .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel.drvPath --raw > /dev/null
