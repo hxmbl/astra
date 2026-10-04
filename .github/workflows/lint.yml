@@ -1,0 +1,49 @@
+name: lint
+
+# The only CI in this repo that can run green today.
+#
+# check.yml is disabled because building every host takes twenty minutes and was
+# reliably red. These three checks need no nix, no NixOS and no network, and they
+# catch the mistakes that actually happen when a config is edited by hand:
+# unbalanced braces, and a boot state machine that quietly does the wrong thing.
+#
+# Delete this file if you would rather not have CI at all — it is one command.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  nix-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Validated against the pre-refactor files as well as the current ones, so
+      # a false positive here shows up as a failure of the checker itself.
+      - name: brackets and strings balance
+        run: python3 .ci/nix-balance.py .
+      - name: no attribute claimed by two modules with different values
+        run: python3 .ci/nix-conflicts.py .
+
+  boot-state-machine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Exercises modules/boot/bin/astra-boot against a fake /nix store: no nix,
+      # no root, two seconds. This is the piece of astra where a logic bug is
+      # silent until a machine reboots itself into the wrong system.
+      - name: astra-boot
+        run: bash .ci/astra-boot-test.sh
+
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: every shell script parses
+        run: |
+          find . -name '*.sh' -not -path './.git/*' -exec bash -n {} \;
+          bash -n modules/boot/bin/astra-boot
