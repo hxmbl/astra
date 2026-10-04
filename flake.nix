@@ -1,73 +1,96 @@
 {
-  description = "astra";
+  description = "astra — one flake, every machine I own";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Zen is the default browser: a Firefox fork we can build ourselves rather
+    # than a binary we have to download from a vendor CDN.
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Cursor, only ever reached through `astra.desktop.vendorTools`.
     cursor = {
       url = "github:tomsch/cursor-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, zen-browser, cursor, ... }: {
-    nixosConfigurations = {
-      vm-nano = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit zen-browser cursor; };
-        modules = [
-          ./hosts/vm/nano/configuration.nix
-          home-manager.nixosModules.home-manager
-        ];
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      home-manager,
+      zen-browser,
+      cursor,
+      ...
+    }:
+    let
+      system = "x86_64-linux";
+      lib = nixpkgs.lib;
+      legacy = nixpkgs.legacyPackages.${system};
+
+      # Every host is a directory with a configuration.nix in it. Adding a
+      # machine is one line here plus one file on disk; nothing else in this
+      # file changes and CI reads the same list.
+      hosts = {
+        laptop = ./hosts/laptop;
+        vm-nano = ./hosts/vm/nano;
+        vm-mini = ./hosts/vm/mini;
+        vm-full = ./hosts/vm/full;
+        server-full = ./hosts/server/server-full;
+        server-core = ./hosts/server/server-core;
+        astra-home = ./hosts/astra-home;
       };
 
-      vm-mini = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit zen-browser cursor; };
-        modules = [
-          ./hosts/vm/mini/configuration.nix
-          home-manager.nixosModules.home-manager
-        ];
+      # Passing the whole input set as specialArgs means any module can reach
+      # zen-browser/cursor without flake.nix growing per-host specialArgs.
+      mkHost =
+        path:
+        {
+          nixpkgs,
+          home-manager,
+          ...
+        }:
+        lib.nixosSystem {
+          inherit system;
+          specialArgs = inputs // {
+            astraFlake = self;
+            astraInputs = inputs;
+          };
+          modules = [
+            "${path}/configuration.nix"
+            home-manager.nixosModules.home-manager
+          ];
+        };
+    in
+    {
+      nixosConfigurations = lib.mapAttrs (_: mkHost) hosts;
+
+      packages.${system} = {
+        astra-info = (import ./lib/astra-info.nix { inherit nixpkgs system; }).package;
+        astra-boot = import ./lib/astra-boot.nix { inherit nixpkgs system; };
       };
 
-      vm-full = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit zen-browser cursor; };
-        modules = [
-          ./hosts/vm/full/configuration.nix
-          home-manager.nixosModules.home-manager
-        ];
-      };
+      # `nix fmt` in the repo formats everything with alejandra.
+      formatter = legacy.alejandra;
 
-      laptop = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit zen-browser cursor; };
-        modules = [
-          ./hosts/laptop/configuration.nix
-          home-manager.nixosModules.home-manager
-        ];
-      };
-
-      server-full = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          ./hosts/server/server-full/configuration.nix
-        ];
-      };
-
-      server-core = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          ./hosts/server/server-core/configuration.nix
+      # A deliberately tiny shell: alejandra and nil are the only tools that
+      # need to be newer than whatever the machine already has installed.
+      devShells.${system}.default = legacy.mkShell {
+        name = "astra";
+        packages = [
+          legacy.alejandra
+          legacy.nil
+          legacy.nixfmt-rfc-style
         ];
       };
     };
-  };
 }

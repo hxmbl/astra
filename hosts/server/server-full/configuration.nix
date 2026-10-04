@@ -1,10 +1,32 @@
-{ config, pkgs, ... }: {
-  imports = [ ../../../profiles/base.nix ];
+# astra-server-full — the box that owns the internet-facing services.
+#
+# Structure: one ingress (Caddy, ports 80/443), everything else bound to
+# loopback or to a published port that genuinely needs the outside world
+# (RustDesk's relay). This file is now almost entirely "which services and
+# which hostname" — the definitions live in modules/services/ so the same
+# modules can serve astra-home.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+{
+  imports = [
+    ../../../profiles/core.nix
 
-  boot.loader.grub.enable = true;
-  boot.loader.grub.device = "/dev/sda";
+    ../../../modules/services/caddy.nix
+    ../../../modules/services/dashdot.nix
+    ../../../modules/services/searxng.nix
+    ../../../modules/services/rustdesk.nix
+  ];
 
   networking.hostName = "astra-server";
+
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/sda";
+  };
 
   # PLACEHOLDER — replace with real mounts on install
   fileSystems."/" = {
@@ -12,101 +34,35 @@
     fsType = "ext4";
   };
 
-  users.users.user = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" "docker" ];
-    initialPassword = "nixos";
+  # Key-only ssh. Passwords on a box that runs the front door are how people
+  # lose a weekend.
+  astra.ssh.extraSettings = {
+    PasswordAuthentication = false;
+    AuthenticationMethods = "publickey";
   };
 
-  services.openssh = {
+  # ------------------------------------------------------------- the stack --
+  astra.caddy = {
     enable = true;
-    settings.PasswordAuthentication = false;
-    settings.PermitRootLogin = "no";
+    # No email: this box serves internal hostnames only. Put a real domain and
+    # an ACME email in here when you decide it needs to be public.
+    email = "";
+    domain = "astra.local";
   };
 
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [
-      22     # ssh
-      80     # http (caddy)
-      443    # https (caddy)
-      3001   # dashdot
-      6379   # valkey
-      8080   # searxng
-      21115  # rustdesk hbbs
-      21116  # rustdesk hbbs
-      21117  # rustdesk hbbr
-      21118  # rustdesk webclient
-    ];
-    allowedUDPPorts = [
-      21116  # rustdesk hbbs
-    ];
-  };
+  services.dashdot.enable = true;
+  services.searxng.enable = true;
+  services.rustdesk.enable = true;
 
-  virtualisation.docker = {
-    enable = true;
-    autoPrune.enable = true;
-  };
+  # Server-only conveniences on top of the core profile.
+  astra.packages = with pkgs; [
+    restic # backups of the things that are not in the store
+    tree
+  ];
 
-  services.caddy = {
-    enable = true;
-    email = "admin@astra";
-  };
-
-  # --- services ---
-
-  # dashdot — server dashboard
-  virtualisation.oci-containers = {
-    backend = "docker";
-    containers = {
-      dashdot = {
-        image = "mauricenino/dashdot:latest";
-        ports = [ "3001:3001" ];
-        volumes = [ "/:/mnt/host:ro" ];
-        autoStart = true;
-      };
-
-      searxng-valkey = {
-        image = "valkey/valkey:9-alpine";
-        volumes = [ "searxng-valkey-data:/data" ];
-        autoStart = true;
-      };
-
-      searxng-core = {
-        image = "searxng/searxng:latest";
-        ports = [ "8080:8080" ];
-        dependsOn = [ "searxng-valkey" ];
-        volumes = [
-          "./searxng:/etc/searxng:rw"
-        ];
-        environment = {
-          SEARXNG_VALKEY_URL = "redis://searxng-valkey:6379";
-        };
-        autoStart = true;
-      };
-
-      rustdesk-hbbs = {
-        image = "rustdesk/rustdesk-server:latest";
-        cmd = [ "hbbs" "-r" "astra-server:21115" ];
-        ports = [
-          "21115:21115"
-          "21116:21116"
-          "21116:21116/udp"
-          "21118:21118"
-        ];
-        volumes = [ "rustdesk-data:/root" ];
-        autoStart = true;
-      };
-
-      rustdesk-hbbr = {
-        image = "rustdesk/rustdesk-server:latest";
-        cmd = [ "hbbr" ];
-        ports = [ "21117:21117" ];
-        volumes = [ "rustdesk-data:/root" ];
-        autoStart = true;
-      };
-    };
-  };
+  # A server wants a bigger disk cache headroom than a laptop does, but it does
+  # not want to hold generations forever.
+  astra.nixGcDays = 30;
 
   system.stateVersion = "24.11";
 }

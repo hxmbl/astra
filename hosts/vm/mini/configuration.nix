@@ -1,20 +1,24 @@
-{ config, pkgs, ... }: {
+# astra-vm-mini — core profile in a VM. The dev toolchain, docker and tailscale
+# without a display: closest thing to the server hosts you can poke at.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+{
   imports = [ ../../../profiles/core.nix ];
 
-  boot.loader.grub.enable = true;
-  boot.loader.grub.device = "/dev/sda";
-
   networking.hostName = "astra-vm-mini";
+
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/sda";
+  };
 
   fileSystems."/" = {
     device = "/dev/sda1";
     fsType = "ext4";
-  };
-
-  users.users.user = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" ];
-    initialPassword = "nixos";
   };
 
   system.stateVersion = "24.11";

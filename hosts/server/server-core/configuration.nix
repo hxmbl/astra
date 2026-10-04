@@ -1,10 +1,20 @@
-{ config, pkgs, ... }: {
+# astra-server-core — the smallest thing that is useful as a server: sshd, a
+# firewall, a hostname. Everything else on it is deliberate.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+{
   imports = [ ../../../profiles/base.nix ];
 
-  boot.loader.grub.enable = true;
-  boot.loader.grub.device = "/dev/sda";
-
   networking.hostName = "astra-server-core";
+
+  boot.loader.grub = {
+    enable = true;
+    device = "/dev/sda";
+  };
 
   # PLACEHOLDER — replace with real mounts on install
   fileSystems."/" = {
@@ -12,22 +22,17 @@
     fsType = "ext4";
   };
 
-  users.users.user = {
-    isNormalUser = true;
-    extraGroups = [ "wheel" ];
-    initialPassword = "nixos";
+  # Key-only ssh. Anything else on this box is a mistake.
+  astra.ssh.extraSettings = {
+    PasswordAuthentication = false;
+    AuthenticationMethods = "publickey";
   };
 
-  services.openssh = {
-    enable = true;
-    settings.PasswordAuthentication = false;
-    settings.PermitRootLogin = "no";
-  };
+  networking.firewall.allowedTCPPorts = [ 22 ];
 
-  networking.firewall = {
-    enable = true;
-    allowedTCPPorts = [ 22 ];
-  };
+  # A server has no use for a dev toolchain, but it does need the tools that
+  # make `nixos-rebuild` and a container runtime pleasant to live with.
+  astra.packages = with pkgs; [ bash-completion tree ];
 
   system.stateVersion = "24.11";
 }

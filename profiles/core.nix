@@ -1,28 +1,74 @@
-{ config, pkgs, ... }: {
+# core.nix — base plus the things you need to actually work on and run things.
+#
+# core = a workstation without a screen, or a server with a keyboard you never
+# touch. It adds: dev toolchain, containers, tailnet, and home-manager.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.astra;
+in
+{
   imports = [ ./base.nix ];
 
-  environment.systemPackages = with pkgs; [
-    adb
-    btop
-    fd
-    fastfetch
-    gh
-    go
-    jq
-    neovim
-    python3
-    rustup
-    speedtest-cli
-    tailscale
-    tmux
-    zoxide
-  ];
+  config = lib.mkIf cfg.enable {
+    astra.profiles = [ "core" ];
 
-  virtualisation.docker.enable = true;
-  services.tailscale.enable = true;
+    # Docker puts the `docker` group in existence itself, so adding it here is
+    # safe and is the only way a host gets rootless-ish docker access.
+    astra.userGroups = [ "docker" ];
 
-  home-manager.useGlobalPkgs = true;
-  home-manager.useUserPackages = true;
-  home-manager.users.user = import ../home/default.nix;
+    astra.packages = with pkgs; [
+      adb
+      btop
+      docker-compose
+      fastfetch
+      fd
+      gh
+      go
+      jq
+      neovim
+      nil
+      nix-direnv
+      python3
+      rustup
+      speedtest-cli
+      tailscale
+      tmux
+      zoxide
+    ];
 
+    # --------------------------------------------------------------- docker --
+    virtualisation.docker = {
+      enable = true;
+      autoPrune.enable = true;
+    };
+
+    # ------------------------------------------------------------ tailscale --
+    services.tailscale = {
+      enable = true;
+      # Client-only by default: no exit node, no subnet router, no DNS
+      # takeover. A host that needs one must say so out loud.
+      useRoutingFeatures = "client";
+      extraUpflags = [ "--accept-dns=false" ];
+    };
+
+    # --------------------------------------------------------- home-manager --
+    home-manager = {
+      useGlobalPkgs = true;
+      useUserPackages = true;
+      users = {
+        ${cfg.user} = {
+          imports = [ ../../home ];
+          # `desktop` is the single flag home/ needs to decide whether it is
+          # managing a desktop or a shell on a server.
+          astra.desktop.enable = cfg.desktop;
+          astra.userName = cfg.user;
+        };
+      };
+    };
+  };
 }
