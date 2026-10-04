@@ -53,7 +53,7 @@ in
       # Client-only by default: no exit node, no subnet router, no DNS
       # takeover. A host that needs one must say so out loud.
       useRoutingFeatures = "client";
-      extraUpflags = [ "--accept-dns=false" ];
+      extraUpFlags = [ "--accept-dns=false" ];
     };
 
     # --------------------------------------------------------- home-manager --

@@ -1,45 +1,31 @@
 # SSH defaults for every astra machine.
 #
-# Lives in its own module rather than in profiles/base.nix so that hosts which
-# do not want a remote shell at all (`astra.ssh.enable = false`) can say so
-# without base.nix growing a second opinion about it.
+# The astra.ssh.* options are declared in profiles/base.nix, which owns the
+# whole astra.* surface; this module is only the implementation. It used to
+# declare them itself, and importing both made every host fail to evaluate:
+#
+#   error: The option `astra.ssh.enable' in `.../profiles/base.nix' is already
+#          declared in `.../modules/astra/ssh.nix'
+#
+# In NixOS two mkOption declarations of the same path are a hard error, not a
+# merge, so the ownership has to be in exactly one file.
 { config, lib, pkgs, ... }:
 let
   cfg = config.astra.ssh;
 in
 {
-  options.astra.ssh = {
-    enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Run sshd. Turn off for machines that never accept a remote login.";
-    };
-
-    port = lib.mkOption {
-      type = lib.types.port;
-      default = 22;
-      description = "sshd port.";
-    };
-
-    hostKeys = lib.mkOption {
-      type = lib.types.listOf lib.types.path;
-      default = [ ];
-      description = "Extra host keys to generate. Empty means the distro default (ed25519 + rsa).";
-    };
-  };
-
   config = lib.mkIf cfg.enable {
     services.openssh = {
       enable = true;
       ports = [ cfg.port ];
       hostKeys = lib.mkIf (cfg.hostKeys != [ ]) cfg.hostKeys;
       settings = {
-        # No root login, no X11 forwarding (we are Wayland), no password
-        # guessing games. Servers tighten PasswordAuthentication further.
+        # No root login, no X11 forwarding (we are Wayland), no keyboard-interactive
+        # auth. Servers tighten PasswordAuthentication further.
         PermitRootLogin = "no";
         X11Forwarding = "no";
         KbdInteractiveAuthentication = "no";
-        # WhyThisIsRequired... n/a. Compression costs CPU on a LAN.
+        # Compression costs CPU on a LAN.
         Compression = "no";
         ClientAliveInterval = "120";
         ClientAliveCountMax = "3";
