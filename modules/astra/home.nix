@@ -209,7 +209,9 @@ in
     # Caddy (imported above) opens 80/443; this is the one port that has to be
     # open for the house to have any sensors at all.
     networking.firewall = lib.mkIf cfg.mqtt.enable {
-      allowedTCPPorts = [ (toString cfg.mqtt.port) ];
+      # The port number itself, not toString: allowedTCPPorts is a list of ports
+      # (16-bit ints), not strings.
+      allowedTCPPorts = [ cfg.mqtt.port ];
     };
 
     # ---------------------------------------------------------------- zigbee --
