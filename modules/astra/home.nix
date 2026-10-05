@@ -166,20 +166,31 @@ in
           # is security theatre. If your wifi has guests on it, drop this and
           # add `users` — the seam is right there.
           omitPasswordAuth = true;
+          # allow_anonymous is a *listener* freeform key
+          # (mosquitto.nix:269, in freeformListenerKeys).
           settings = {
             allow_anonymous = true;
-            # ESPHome devices are chaty; without this the broker grows an
-            # unbounded retained-message cache on an SD card.
-            max_queued_messages = 1000;
-            message_size_limit = 0;
           };
         }
       ];
 
       # The module emits `persistence true` but not persistence_location, so
       # without this the broker file lands in its own default directory.
+      #
+      # These three are *global* freeform keys, not listener ones — the two
+      # listener whitelists (freeformListenerKeys at :265, freeformGlobalKeys at
+      # :530) are separate sets, and putting a global key under a listener
+      # asserts:
+      #   Failed assertions:
+      #   - Invalid config key services.mosquitto.listener.0.settings.max_queued_messages.
       persistence = true;
-      settings.persistence_location = "${cfg.mqtt.dataDir}/";
+      settings = {
+        persistence_location = "${cfg.mqtt.dataDir}/";
+        # ESPHome devices are chaty; without these the broker grows an unbounded
+        # retained-message cache on an SD card.
+        max_queued_messages = 1000;
+        message_size_limit = 0;
+      };
 
       logDest = [ "${cfg.mqtt.dataDir}/mosquitto.log" ];
       logType = [
