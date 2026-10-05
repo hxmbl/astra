@@ -33,7 +33,13 @@
   # Ask for a maintenance shell instead of silently dropping to a black screen
   # when the initrd cannot mount the root filesystem. This single option is the
   # difference between "unbootable" and "type one command".
-  boot.initrd.systemd.ask-console = true;
+  #
+  # `boot.initrd.systemd.ask-console` does not exist. The real option is
+  # emergencyAccess (bool or a hashed password string):
+  # nixos/modules/system/boot/systemd/initrd.nix:312. After the initrd, the
+  # equivalent is systemd.enableEmergencyMode
+  # (nixos/modules/system/boot/emergency-mode.nix:13), which defaults to true.
+  boot.initrd.systemd.emergencyAccess = true;
   # NixOS's built-in "Rescue system" boot entry. astra-boot's recovery session
   # boots it, so recovery exists even when the normal system has no /nix.
   boot.rescueSystem.enable = true;
