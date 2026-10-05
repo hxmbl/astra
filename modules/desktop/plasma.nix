@@ -73,10 +73,13 @@ in
       (nerdfonts.override { fonts = [ "JetBrainsMono" ]; })
     ];
     fonts.fontconfig = {
-      enableDefaultFonts = true;
+      # There is no `enableDefaultFonts` in this nixpkgs — the option is
+      # `enable`, and the default-font aliases are emitted whenever it is on
+      # (nixos/modules/config/fonts/fontconfig.nix, defaultFontsConf at line 96).
+      enable = true;
       # defaultFonts is an attrset of three lists — monospace, sansSerif and
-      # serif — not a single list (nixos/modules/config/fonts/fontconfig.nix:348).
-      # The values are font *family* names, not packages.
+      # serif — not a single list (same file, line 348). The values are font
+      # *family* names, not packages.
       defaultFonts = {
         monospace = [
           "JetBrainsMono Nerd Font"
