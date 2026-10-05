@@ -96,7 +96,12 @@
       };
 
       # `nix fmt` in the repo formats everything with alejandra.
-      formatter = legacy.alejandra;
+      #
+      # Per-system, not the flat `formatter = ...`: nix 2.35's `nix fmt` looks
+      # for formatter.<system> and reports
+      #   error: flake does not provide attribute 'formatter.x86_64-linux'
+      # for the flat form. It also makes `nix flake check` able to check it.
+      formatter.${system} = legacy.alejandra;
 
       # A deliberately tiny shell: alejandra and nil are the only tools that
       # need to be newer than whatever the machine already has installed.
