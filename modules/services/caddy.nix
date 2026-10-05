@@ -111,6 +111,10 @@ in
       );
 
     # The /etc/hosts convenience described at the top of the file.
-    networking.extraHosts = map (h: "${h.name}.${cfg.domain} 127.0.0.1") cfg.hosts;
+    #
+    # types.lines, not listOf str: the option is appended verbatim to
+    # /etc/hosts (nixos/modules/config/networking.nix:54, and
+    # pkgs.writeText "extra-hosts" at :201).
+    networking.extraHosts = lib.concatMapStringsSep "\n" (h: "${h.name}.${cfg.domain} 127.0.0.1") cfg.hosts;
   };
 }
