@@ -19,6 +19,17 @@ let
   cfg = config.astra.home;
 in
 {
+  # Imports go here, at module top level, NOT inside the mkIf below:
+  #
+  #   error: The option `imports' does not exist.
+  #
+  # The module system treats `imports` as a special key only when it is a
+  # direct child of the module. Under mkIf it becomes a plain config
+  # definition of a non-existent option and evaluation fails. The config
+  # itself stays gated, so a host that does not enable this service still
+  # gets nothing but inert option declarations.
+  imports = [ ../services/caddy.nix ];
+
   options.astra.home = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -101,8 +112,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    imports = [ ../services/caddy.nix ];
-
     # ------------------------------------------------------------ the house --
     services.home-assistant = {
       enable = true;
