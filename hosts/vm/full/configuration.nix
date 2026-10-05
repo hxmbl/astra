@@ -33,10 +33,12 @@
   };
 
   # A VM has no real GPU; llvmpipe is what makes Plasma start at all.
-  virtualisation.graphics = {
-    enable = true;
-    options = [ "-vga virtio" ];
-  };
+  #
+  # virtualisation.graphics is a plain bool — it means "open a graphics window",
+  # not a place for QEMU flags (nixos/modules/virtualisation/qemu-vm.nix:537).
+  # The flags moved to virtualisation.qemu.options (same file, line 777).
+  virtualisation.graphics = true;
+  virtualisation.qemu.options = [ "-vga virtio" ];
 
   system.stateVersion = "24.11";
 }
