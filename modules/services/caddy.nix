@@ -87,6 +87,11 @@ in
       # A plain attrset keyed by hostname, not a list of { name, value } pairs:
       # services.caddy.virtualHosts is types.attrsOf (submodule ...)
       # (nixos/modules/services/web-servers/caddy/default.nix:259).
+      #
+      # And the vhost submodule has no `routes` — it is hostName,
+      # serverAliases, listenAddresses, useACMEHost, logFormat and extraConfig
+      # only (caddy/vhost-options.nix:14-84). Routing is a Caddyfile directive,
+      # so a reverse proxy goes in extraConfig (types.lines, line 78).
       builtins.listToAttrs (
         map (
           h:
@@ -96,26 +101,9 @@ in
               listenAddresses = [ "0.0.0.0" ];
               # No explicit tls block on purpose: Caddy's automatic HTTPS does the
               # right thing for real names and stays on :80 for internal ones.
-              routes = [
-                {
-                  match = [
-                    {
-                      host = [ "${h.name}.${cfg.domain}" ];
-                      path = [ "/*" ];
-                    }
-                  ];
-                  handle = [
-                    {
-                      handler = "reverse_proxy";
-                      upstreams = [
-                        {
-                          dial = h.upstream;
-                        }
-                      ];
-                    }
-                  ];
-                }
-              ];
+              extraConfig = ''
+                reverse_proxy ${h.upstream}
+              '';
             };
           }
         )
