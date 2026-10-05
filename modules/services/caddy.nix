@@ -84,35 +84,43 @@ in
     networking.firewall.allowedTCPPorts = [ 80 443 ];
 
     services.caddy.virtualHosts =
-      map (h: {
-        name = "${h.name}.${cfg.domain}";
-        value = {
-          listenAddresses = [ "0.0.0.0" ];
-          # No explicit tls block on purpose: Caddy's automatic HTTPS does the
-          # right thing for real names and stays on :80 for internal ones.
-          routes = [
-            {
-              match = [
+      # A plain attrset keyed by hostname, not a list of { name, value } pairs:
+      # services.caddy.virtualHosts is types.attrsOf (submodule ...)
+      # (nixos/modules/services/web-servers/caddy/default.nix:259).
+      builtins.listToAttrs (
+        map (
+          h:
+          {
+            name = "${h.name}.${cfg.domain}";
+            value = {
+              listenAddresses = [ "0.0.0.0" ];
+              # No explicit tls block on purpose: Caddy's automatic HTTPS does the
+              # right thing for real names and stays on :80 for internal ones.
+              routes = [
                 {
-                  host = [ "${h.name}.${cfg.domain}" ];
-                  path = [ "/*" ];
-                }
-              ];
-              handle = [
-                {
-                  handler = "reverse_proxy";
-                  upstreams = [
+                  match = [
                     {
-                      dial = h.upstream;
+                      host = [ "${h.name}.${cfg.domain}" ];
+                      path = [ "/*" ];
+                    }
+                  ];
+                  handle = [
+                    {
+                      handler = "reverse_proxy";
+                      upstreams = [
+                        {
+                          dial = h.upstream;
+                        }
+                      ];
                     }
                   ];
                 }
               ];
-            }
-          ];
-        };
-      })
-      cfg.hosts;
+            };
+          }
+        )
+        cfg.hosts
+      );
 
     # The /etc/hosts convenience described at the top of the file.
     networking.extraHosts = map (h: "${h.name}.${cfg.domain} 127.0.0.1") cfg.hosts;
