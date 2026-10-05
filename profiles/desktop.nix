@@ -60,7 +60,9 @@ in
           android-studio
           cursor.packages.${system}.default
           jetbrains-toolbox
-          visual-studio-code
+          # The nixpkgs attribute is `vscode`, not `visual-studio-code`
+          # (pkgs/top-level/all-packages.nix:10005, mainProgram "code").
+          vscode
         ]
       )
       ++ [

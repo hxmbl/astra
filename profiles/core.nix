@@ -22,7 +22,10 @@ in
     astra.userGroups = [ "docker" ];
 
     astra.packages = with pkgs; [
-      adb
+      # pkgs.adb does not exist in this nixpkgs; android-tools is the package
+      # that provides the adb and fastboot binaries
+      # (pkgs/tools/misc/android-tools, longDescription at line 85).
+      android-tools
       btop
       docker-compose
       fastfetch
