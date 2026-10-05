@@ -74,7 +74,10 @@ in
       enable = true;
       email = lib.mkIf (cfg.email != "") cfg.email;
       # Caddy's admin API is a remote-code-execution surface and we never use it.
-      admin = "off";
+      # It is a *global* option, not `services.caddy.admin` — that option does not
+      # exist; global config goes in globalConfig (types.lines,
+      # nixos/modules/services/web-servers/caddy/default.nix:223).
+      globalConfig = "admin off";
     };
 
     # Nothing but caddy should ever listen for HTTP.
