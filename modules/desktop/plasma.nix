@@ -74,11 +74,20 @@ in
     ];
     fonts.fontconfig = {
       enableDefaultFonts = true;
-      defaultFonts = [
-        "Noto Sans"
-        "DejaVu Sans Mono"
-        "JetBrainsMono Nerd Font"
-      ];
+      # defaultFonts is an attrset of three lists — monospace, sansSerif and
+      # serif — not a single list (nixos/modules/config/fonts/fontconfig.nix:348).
+      # The values are font *family* names, not packages.
+      defaultFonts = {
+        monospace = [
+          "JetBrainsMono Nerd Font"
+          "DejaVu Sans Mono"
+        ];
+        sansSerif = [
+          "Noto Sans"
+          "DejaVu Sans"
+        ];
+        serif = [ "Noto Serif" "DejaVu Serif" ];
+      };
     };
 
     # ---------------------------------------------------------- behaviour ---
