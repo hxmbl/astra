@@ -82,7 +82,12 @@
       nixosConfigurations = lib.mapAttrs (_: mkHost) hosts;
 
       packages.${system} = {
-        astra-info = (import ./lib/astra-info.nix { inherit nixpkgs system; }).package;
+        astra-info = (import ./lib/astra-info.nix {
+          # The function takes `pkgs`, not `nixpkgs` (lib/astra-info.nix:7), the
+          # same signature lib/astra-boot.nix uses. profiles/base.nix passes
+          # `inherit pkgs` correctly; only this call site was wrong.
+          pkgs = legacy;
+        }).package;
         astra-boot = import ./lib/astra-boot.nix {
           pkgs = legacy;
           inherit system;
