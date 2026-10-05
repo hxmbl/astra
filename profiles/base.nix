@@ -231,6 +231,17 @@ in
     networking.nameservers = cfg.dns.servers;
     networking.firewall.enable = true;
 
+    nixpkgs.config = {
+      # Restored: this was in base.nix before the option-surface rewrite and was
+      # dropped in the rewrite. hardware.enableAllFirmware on the laptop pulls
+      # broadcom-bt-firmware, which is unfree
+      # (nixos/modules/hardware/all-firmware.nix:91), so without this the
+      # laptop refuses to evaluate:
+      #   error: Refusing to evaluate package 'broadcom-bt-firmware-...' because
+      #          it has an unfree license
+      allowUnfree = true;
+    };
+
     # ------------------------------------------------------------------ nix --
     nix.settings = {
       experimental-features = [ "nix-command" "flakes" ];
