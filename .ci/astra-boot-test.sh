@@ -114,6 +114,16 @@ export ASTRA_TESTING=1
 # script, because an unquoted heredoc would expand $1 at write time.
 export ASTRA_TEST_REBOOT_LOG="$TMP/reboot.log"
 
+# Listing without `ls | grep`, so shellcheck stays quiet about non-alphanumeric
+# filenames (SC2010).
+entry_names() {
+  local f
+  for f in "$ESP"/loader/entries/astra-*.conf; do
+    [ -e "$f" ] && printf '%s\n' "${f##*/}"
+  done
+}
+has_entry() { [ -e "$ESP/loader/entries/astra-$1.conf" ]; }
+
 ab() {
   bash "$TOOL" "$@" 2>>"$TMP/stderr.log"
 }
@@ -142,8 +152,7 @@ ab arm
 assert_contains "arm puts the new generation on trial" "$(cat "$STATE/state")" "testing=4"
 assert_contains "and boots it next time (default points at the trial)" \
   "$(cat "$TMP/bootctl.log")" "set-default Astra n=4 (testing)"
-assert_eq "a boot entry was written for it" \
-  "$(ls "$ESP/loader/entries" | grep -c 'astra-4.conf')" "1"
+has_entry 4 && ok "a boot entry was written for it" || no "a boot entry was written for it"
 assert_eq "the entry names the real kernel" \
   "$(grep -c "linux .*system-4-link/kernel" "$ESP/loader/entries/astra-4.conf")" "1"
 
@@ -215,8 +224,7 @@ rm -rf "$PROFILES/system-2-link"
 ln -sfn "$PROFILES/system-3-link" "$RUN/current-system"
 printf 'c\n' >"$STATE/cmdline-3"
 ab promote 3 >/dev/null
-assert_eq "no entry is written for a generation with no kernel" \
-  "$(ls "$ESP/loader/entries" | grep -c 'astra-2.conf')" "0"
+has_entry 2 && no "no entry is written for a generation with no kernel" || ok "no entry is written for a generation with no kernel"
 
 # the default must still be settable when the stable generation is gone
 reset_world
@@ -250,6 +258,23 @@ assert_eq "restore-plan without a snapshot is an error" "$?" "1"
 ab nonsense-command >/dev/null 2>&1
 assert_eq "an unknown command exits non-zero" "$?" "1"
 ab usage | grep -q restore-plan && ok "usage lists every command" || no "usage lists every command"
+
+# ------------------------------------------------------------- 5. the keep window --
+echo
+echo "the boot menu does not grow forever"
+reset_world
+ln -sfn "$PROFILES/system-5-link" "$RUN/current-system"
+for n in 1 2 3 4 5; do printf 'c\n' >"$STATE/cmdline-$n"; done
+# Appended to boot.conf rather than exported: the config file is sourced after
+# the defaults and wins over the environment, which is deliberate.
+printf 'ASTRA_KEEP=2\n' >>"$ETC/boot.conf"
+bash "$TOOL" entries >/dev/null 2>&1
+assert_eq "only the newest ASTRA_KEEP generations get an entry" \
+  "$(entry_names | grep -c .)" "2"
+# Generations 2 and 4 were removed by earlier scenarios, so what is left is
+# 1, 3, 5 and the newest two are 5 and 3.
+assert_eq "and they are the newest ones" \
+  "$(entry_names | sed 's/astra-//;s/\.conf//' | sort -n | tr '\n' ' ')" "3 5 "
 
 echo
 echo "$pass passed, $fail failed"

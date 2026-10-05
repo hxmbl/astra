@@ -67,12 +67,15 @@ ASTRA_HEALTH_LOG=$ASTRA_STATE_DIR/health.log
 
 # ---------------------------------------------------------------- defaults --
 ASTRA_KEEP=5 # generations to keep in the boot menu
-ASTRA_INTERVAL=20 # seconds between guard runs
+# ASTRA_INTERVAL and ASTRA_REQUIRE_NETWORK are deliberately absent: they are
+# read by modules/boot/ab.nix, not by this script — the guard timer comes from
+# the systemd timer, and whether there is a network check is decided when the
+# check files are generated. They still appear in /etc/astra/boot.conf so a
+# human can read the effective configuration.
 ASTRA_FAILURES=3 # consecutive failed guard runs before rolling back
 ASTRA_PROMOTE_AFTER=300 # seconds a generation must be healthy to be promoted
 ASTRA_ESP=${ASTRA_ESP:-} # empty = figure it out from lsblk
 ASTRA_REBOOT=1 # 0 = never reboot, just report
-ASTRA_REQUIRE_NETWORK=0 # 1 = a check needs the network to be up
 ASTRA_DEFAULT_CMDLINE=""
 ASTRA_SNAPSHOT_ROOT=${ASTRA_SNAPSHOT_ROOT:-/.snapshots}
 ASTRA_SNAPSHOT_PREFIX=${ASTRA_SNAPSHOT_PREFIX:-nixos}
@@ -255,15 +258,26 @@ entry_title() {
 # Our entries point at store paths that exist on disk, discovered at runtime.
 write_entries() {
   command -v bootctl >/dev/null 2>&1 || return 0
-  local mp gens n sys kern initrd title existing
-  mp=$(esp_mount) || {
+  local esp gens kept n sys kern initrd title existing
+  esp=$(esp_mount) || {
     log "no EFI system partition found; leaving the boot menu alone"
     return 1
   }
-  mkdir -p "$mp/loader/entries"
+  mkdir -p "$esp/loader/entries"
   gens=" $(generations) "
 
-  for n in $(generations); do
+  # Only the newest $ASTRA_KEEP generations get an entry. Older ones stay in
+  # the store and stay rollback-able via `astra-boot promote`, they just do not
+  # clutter the menu. This was documented (astra.ab.keep) but never applied.
+  #
+  # Newest-first, no tac: the order entries are written in does not matter, and
+  # tac is not everywhere this script has to run (it has to run in the rescue
+  # shell and in the test harness).
+  local keep_list
+  keep_list=$(newest_first | head -n "$ASTRA_KEEP")
+  log "keeping $(printf '%s\n' "$keep_list" | grep -c .) of $(generations | wc -w | tr -d ' ') generations in the menu (ASTRA_KEEP=$ASTRA_KEEP)"
+
+  for n in $keep_list; do
     sys=$(closure "$n")
     [ -n "$sys" ] || continue
     kern="$sys/kernel"
@@ -273,7 +287,7 @@ write_entries() {
       continue
     fi
     title=$(entry_title "$n")
-    cat >"$mp/loader/entries/astra-$n.conf" <<-EOF
+    cat >"$esp/loader/entries/astra-$n.conf" <<-EOF
 		title $title
 		version $n
 		linux $kern
@@ -283,16 +297,23 @@ write_entries() {
     log "boot entry: $title -> $sys"
   done
 
-  # Drop entries for generations that are gone, and any of ours that we did not
-  # just rewrite (i.e. whose kernel the garbage collector took).
-  for existing in "$mp"/loader/entries/astra-*.conf; do
+  # Drop entries for generations that are gone, whose kernel the garbage
+  # collector took, or that have aged out of the keep window.
+  # Quoted: keep_list is newline-separated, and an unquoted expansion would
+  # word-split and collapse to "543" rather than "5 4 3".
+  kept=" $(printf '%s' "$keep_list" | tr '\n' ' ') "
+  for existing in "$esp"/loader/entries/astra-*.conf; do
     [ -e "$existing" ] || continue
     n=${existing##*/astra-}
     n=${n%.conf}
-    case "$gens" in
+    case "$kept" in
       *" $n "*) ;;
       *)
-        log "removing boot entry for generation $n (not in the store)"
+        case "$gens" in
+          *" $n "*) reason="aged out of the keep window" ;;
+          *) reason="not in the store" ;;
+        esac
+        log "removing boot entry for generation $n ($reason)"
         rm -f "$existing"
         ;;
     esac
@@ -772,6 +793,9 @@ cmd_restore_plan() {
   fi
   # shellcheck disable=SC1090
   . "$meta"
+  # generation, created, pinned and source all come from that metadata file,
+  # which shellcheck cannot see through the `source` above.
+  # shellcheck disable=SC2154
   cat <<-EOF
 	# plan for snapshot $generation (created $created)
 	#
