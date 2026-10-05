@@ -91,18 +91,25 @@
 
     programs.firefox.enable = true;
 
-    # After installPackages, because that is what links ~/.config/astra into place.
-    home.activation.astraBrowserPolicies = lib.mkAfter [ "installPackages" ] ''
-      # Point every browser profile at the one policy file astra manages.
-      # Idempotent: an existing symlink is simply replaced.
-      policies="$HOME/.config/astra/browser-policies.json"
-      if [ -r "$policies" ]; then
-        for dir in "$HOME"/.zen/*.default* "$HOME"/.mozilla/firefox/*.default*; do
-          [ -d "$dir" ] || continue
-          ln -sfn "$policies" "$dir/policies.json"
-        done
-      fi
-    '';
+    home.activation = {
+      # home.activation is a dagOf (home-manager/modules/home-environment.nix:446),
+      # so ordering is lib.hm.dag.entryAfter, not lib.mkAfter — mkAfter returns
+      # a list of ordering parts and fails with "attempt to call something which
+      # is not a function but a set: { _type = \"order\"; ... }".
+      # `installPackages` is a real entry (home-environment.nix:709) and is what
+      # links ~/.config into place, which this step reads.
+      astraBrowserPolicies = lib.hm.dag.entryAfter [ "installPackages" ] ''
+        # Point every browser profile at the one policy file astra manages.
+        # Idempotent: an existing symlink is simply replaced.
+        policies="$HOME/.config/astra/browser-policies.json"
+        if [ -r "$policies" ]; then
+          for dir in "$HOME"/.zen/*.default* "$HOME"/.mozilla/firefox/*.default*; do
+            [ -d "$dir" ] || continue
+            ln -sfn "$policies" "$dir/policies.json"
+          done
+        fi
+      '';
+    };
 
     # -------------------------------------------------------------- zed -----
     # Unknown keys are ignored by Zed, so this file is safe to grow.

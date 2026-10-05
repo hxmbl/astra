@@ -23,11 +23,20 @@
   # astra.timeZone = "Europe/Amsterdam";
 
   # --------------------------------------------------------------- bootloader --
-  boot.loader.systemd-boot = {
-    enable = true;
+  boot.loader = {
     # A boot menu you can actually read when something is wrong.
+    #
+    # `boot.loader.timeout`, not boot.loader.systemd-boot.timeout: the
+    # systemd-boot module has no such option (its only sub-options are
+    # editor, extraEntries, extraFiles, windows, graceful, configurationLimit,
+    # consoleMode). The menu timeout lives on the loader-generic module
+    # (nixos/modules/system/boot/loader/loader.nix:12, nullOr int, default 5)
+    # and systemd-boot reads it (systemd-boot.nix:54, "menu-force" when null).
     timeout = 10;
-    editor = false;
+    systemd-boot = {
+      enable = true;
+      editor = false;
+    };
   };
   boot.loader.efi.canTouchEfiVariables = true;
   # Ask for a maintenance shell instead of silently dropping to a black screen
