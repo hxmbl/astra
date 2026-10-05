@@ -70,7 +70,15 @@ in
     fonts.packages = with pkgs; [
       dejavu_fonts
       noto-fonts
-      (nerdfonts.override { fonts = [ "JetBrainsMono" ]; })
+      # pkgs.nerd-fonts is an *attrset of individual fonts*, not one package
+      # with an overridable `fonts` argument — it is built with
+      # builtins.listToAttrs over the upstream manifest
+      # (pkgs/data/fonts/nerd-fonts/default.nix:97-100), so there is nothing to
+      # override. Attr names are lower-cased and hyphenated
+      # (convertAttrName, line 14), which makes this one `jetbrains-mono`.
+      # Taking just this one font avoids pulling in all 200MB of Nerd Fonts,
+      # and Ghostty's config asks for it by exactly this family name.
+      nerd-fonts.jetbrains-mono
     ];
     fonts.fontconfig = {
       # There is no `enableDefaultFonts` in this nixpkgs — the option is

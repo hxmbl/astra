@@ -49,9 +49,6 @@
   # equivalent is systemd.enableEmergencyMode
   # (nixos/modules/system/boot/emergency-mode.nix:13), which defaults to true.
   boot.initrd.systemd.emergencyAccess = true;
-  # NixOS's built-in "Rescue system" boot entry. astra-boot's recovery session
-  # boots it, so recovery exists even when the normal system has no /nix.
-  boot.rescueSystem.enable = true;
   boot.kernelParams = [ "quiet" "splash" "rd.systemd.show_status=1" ];
   boot.kernel.sysctl."kernel.kptr_restrict" = 1;
 
