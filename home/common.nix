@@ -1,5 +1,5 @@
 # home/common.nix — the shell, for machines with or without a screen.
-{ config, lib, pkgs, ... }:
+{ ... }:
 {
   programs.zsh = {
     enable = true;

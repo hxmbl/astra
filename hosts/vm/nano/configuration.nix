@@ -1,7 +1,6 @@
 # astra-vm-nano — the smallest thing that boots. Throwaway VM for testing the
 # flake itself; if this one evaluates and boots, the hierarchy is wired up.
 {
-  config,
   lib,
   pkgs,
   ...

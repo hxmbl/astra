@@ -1,9 +1,6 @@
 # astra-vm-mini — core profile in a VM. The dev toolchain, docker and tailscale
 # without a display: closest thing to the server hosts you can poke at.
 {
-  config,
-  lib,
-  pkgs,
   ...
 }:
 {

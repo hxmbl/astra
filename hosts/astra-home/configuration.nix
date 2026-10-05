@@ -5,9 +5,6 @@
 # Home Assistant, a local MQTT broker, ESPHome for writing your own sensor
 # firmware, and no cloud account anywhere in sight.
 {
-  config,
-  lib,
-  pkgs,
   ...
 }:
 {

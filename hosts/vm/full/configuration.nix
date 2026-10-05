@@ -1,9 +1,6 @@
 # astra-vm-full — the KDE desktop in a VM. Use this to test display changes
 # without risking the laptop.
 {
-  config,
-  lib,
-  pkgs,
   ...
 }:
 {

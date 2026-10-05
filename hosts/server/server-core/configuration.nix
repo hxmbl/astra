@@ -1,8 +1,6 @@
 # astra-server-core — the smallest thing that is useful as a server: sshd, a
 # firewall, a hostname. Everything else on it is deliberate.
 {
-  config,
-  lib,
   pkgs,
   ...
 }:

@@ -12,7 +12,7 @@
 #
 # Ordering that matters: the snapshot has to be taken *before* switch-to-configuration
 # changes anything, which is what system.activationScripts does.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.astra.ab.snapshot;
 in

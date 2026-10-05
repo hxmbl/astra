@@ -89,8 +89,9 @@
           pkgs = legacy;
         }).package;
         astra-boot = import ./lib/astra-boot.nix {
+          # No `inherit system` any more: the helper only ever needed pkgs
+          # (lib/astra-boot.nix:8), and Nix errors on an unused named argument.
           pkgs = legacy;
-          inherit system;
         };
       };
 

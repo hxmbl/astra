@@ -8,7 +8,7 @@
 # The relay key is generated into astra.secrets on first activation. Clients
 # need the same key typed in, which is the whole point: without it, nobody can
 # use the relay even if they find the address.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.services.rustdesk;
 in

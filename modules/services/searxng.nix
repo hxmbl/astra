@@ -13,7 +13,7 @@
 #   - searxng's config is just SEARXNG_BIND_ADDRESS=127.0.0.1
 # Both services bind to loopback only, so nothing about it is reachable from the
 # LAN and only Caddy is.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.services.searxng;
 in

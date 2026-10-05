@@ -12,7 +12,7 @@
 # HTTPS is on when you have given an ACME email, off otherwise. An internal-only
 # box asking Let's Encrypt for a certificate for `searx.astra.local` just
 # produces a boot-time error and a browser warning.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.astra.caddy;
 in

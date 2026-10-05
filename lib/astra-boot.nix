@@ -5,7 +5,7 @@
 # profile is the one that might be broken. Being able to run it straight from the
 # flake (`nix run github:hxmbl/astra#astra-boot status`) means the tooling can
 # be fixed independently of the machine it is diagnosing.
-{ pkgs, system ? "x86_64-linux" }:
+{ pkgs }:
 let
   path = ../modules/boot/bin/astra-boot;
 in

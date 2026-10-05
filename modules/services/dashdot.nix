@@ -3,7 +3,7 @@
 # Dashdot is a self-hosted alternative to the wall of vendor status pages: it
 # watches one machine and tells you what that machine is doing. Local only, no
 # account, no outbound calls.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.services.dashdot;
 in

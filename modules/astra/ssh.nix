@@ -9,7 +9,7 @@
 #
 # In NixOS two mkOption declarations of the same path are a hard error, not a
 # merge, so the ownership has to be in exactly one file.
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let
   cfg = config.astra.ssh;
 in

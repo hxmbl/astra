@@ -3,9 +3,6 @@
 # A profile is 95% of this file; what lives here is the stuff that is genuinely
 # about *this* machine: how it boots, what it is plugged into, and who logs in.
 {
-  config,
-  lib,
-  pkgs,
   ...
 }:
 {

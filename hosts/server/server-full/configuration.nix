@@ -6,8 +6,6 @@
 # which hostname" — the definitions live in modules/services/ so the same
 # modules can serve astra-home.
 {
-  config,
-  lib,
   pkgs,
   ...
 }:

@@ -14,7 +14,7 @@
 # telemetry, telemetry-adjacent "studies", Firefox accounts, Pocket, search
 # suggestions and tracking all off, in a place the browser reads before the
 # profile exists.
-{ config, lib, pkgs, ...
+{ config, lib, ...
 }:
 {
   config = lib.mkIf config.astra.desktop.enable {
