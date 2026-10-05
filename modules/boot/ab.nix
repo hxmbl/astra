@@ -379,8 +379,14 @@ in
     # seconds, which is right for a headless machine and a reboot loop you have
     # to break by hand on a laptop.
     #
-    # A plain `if`, not `lib.mkIf cond a b`: mkIf takes two arguments.
-    boot.kernel.panic = if cfg.haltOnPanic then 0 else 10;
-    boot.panicOnOops = false;
+    # Via kernelParams, because boot.kernel.panic and boot.panicOnOops are not
+    # options in this nixpkgs — 'panicOnOops' appears nowhere under nixos/, and
+    # every module that wants this behaviour passes it on the command line
+    # instead (misc/crashdump.nix:66, virtualisation/azure-common.nix:43,
+    # digital-ocean-config.nix:51).
+    boot.kernelParams =
+      lib.optional cfg.haltOnPanic "panic=0" ++ lib.optionals (!cfg.haltOnPanic) [
+        "panic=10"
+      ];
   };
 }
