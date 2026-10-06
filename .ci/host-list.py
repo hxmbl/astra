@@ -20,22 +20,42 @@ import sys
 
 
 def flake_hosts(root):
-    """{name: path} from the `hosts` attrset in flake.nix."""
+    """{name: path} from the `hosts` attrset in flake.nix.
+
+    Indentation-agnostic on purpose: the block used to sit at six spaces and
+    alejandra moved it to four, which broke a regex that anchored on the
+    column. This counts braces instead of guessing at columns, so reformatting
+    the tree cannot silently disarm the check.
+    """
     text = open(os.path.join(root, "flake.nix"), encoding="utf-8").read()
-    m = re.search(r"^ {6}hosts = \{(.*?)^\s{6}\};", text, re.S | re.M)
-    if not m:
+    start = re.search(r"^\s*hosts = \{", text, re.M)
+    if not start:
         sys.exit("could not find the `hosts` attrset in flake.nix")
+
+    depth, i = 0, start.end() - 1
+    while i < len(text):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    else:
+        sys.exit("the `hosts` attrset in flake.nix has unbalanced braces")
+
     out = {}
-    for line in m.group(1).splitlines():
+    for line in text[start.end():i].splitlines():
         line = line.split("#")[0].strip()
-        if not line or line.startswith("..."):
+        if not line:
             continue
-        name, _, path = line.partition("=")
-        name = name.strip()
-        path = path.strip().rstrip(";").strip()
-        if not name or not path:
+        name, sep, path = line.partition("=")
+        name, path = name.strip(), path.strip().rstrip(";").strip()
+        if not sep or not name or not path:
             continue
         out[name] = path
+    if not out:
+        sys.exit("the `hosts` attrset in flake.nix looks empty")
     return out
 
 

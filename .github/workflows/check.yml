@@ -56,7 +56,18 @@ jobs:
             fi
           done
 
-      # The two packages and the formatter are what a person runs by hand from
-      # the README, so they are worth actually building rather than evaluating.
+      # These are what a person runs by hand from the README, so they are worth
+      # actually building rather than evaluating. The formatter is not in this
+      # list: it lives at formatter.<system>, so `.#formatter` is an attrset now
+      # and `nix build` rejects it
+      #   error: flake output attribute 'formatter' is not a derivation or path
+      # `nix flake check` checks that output (and all seven nixosConfigurations,
+      # packages and devShells) anyway, and the step below runs the formatter.
       - name: build the standalone packages
-        run: nix build --no-link .#formatter .#astra-boot .#astra-info
+        run: nix build --no-link .#astra-boot .#astra-info
+
+      # The tree is formatted with alejandra, the formatter this flake declares.
+      # Cheap, and it means the first person to hand-edit a file cannot leave it
+      # half-done.
+      - name: the tree matches its declared formatter
+        run: nix fmt -- --check .
