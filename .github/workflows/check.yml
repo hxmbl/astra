@@ -1,33 +1,62 @@
-# name: flake check
-#
-# Disabled on 2026-10-04: the desktop profile had a stale option in it, and this
-# turns every push into a red X that nobody looks at. Re-enable it once every
-# host below has been through one real `nixos-rebuild`.
-#
-# The matrix is the same host list as flake.nix and install.sh. A host in one
-# place and not the others is a bad morning.
+name: flake check
 
-# on:
-#   push:
-#     branches: [main]
-#   pull_request:
-#     branches: [main]
+# Re-enabled 2026-10-05.
+#
+# It was disabled on 2026-10-04 because the desktop profile carried a stale
+# option, and this turned every push into a red X. Two things have changed:
+#
+#   1. The stale option is fixed, and every host below has been evaluated
+#      against the pinned nixpkgs — not assumed to work.
+#   2. Worse, *disabling* it did not make the red X go away. A workflow file
+#      with its `on:` and `jobs:` commented out is not a disabled workflow, it
+#      is an invalid one, and Actions reports it as a failed run in 0s on
+#      every push. Five of them were in the history before this commit. If you
+#      want this switched off, delete this file.
+#
+# Evaluation only, no building. That is deliberate: it catches the mistakes
+# that actually happen when a config is edited by hand — an option name that
+# does not exist, a value of the wrong type, an attribute declared in two
+# modules, a relative path one level too deep — in a few minutes and with no
+# cache churn. A full build test would be the next thing to add, and it would
+# need a builder that is not a GitHub runner.
 
-# jobs:
-#   check:
-#     runs-on: ubuntu-latest
-#     strategy:
-#       matrix:
-#         host: [vm-nano, vm-mini, vm-full, server-full, server-core, astra-home, laptop]
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: cachix/install-nix-action@v27
-#         with:
-#           extra_nix_config: |
-#             accept-flake-config = true
-#       # laptop and astra-home carry real hardware assumptions — a root
-#       # filesystem by label, groups that only exist once a package is in the
-#       # closure — that a CI runner does not have. They stay in the matrix so
-#       # they get *evaluated*, which is the part that catches mistakes.
-#       - run: nix flake check --no-build
-#       - run: nix eval .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel.drvPath --raw > /dev/null
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+      # flake check evaluates every entry of nixosConfigurations, so this one
+      # command already covers the whole host list. The step after it exists
+      # only so that a failure says which machine it came from.
+      - name: flake check
+        run: nix flake check --no-build
+
+      - name: every host has a derivation
+        run: |
+          set -euo pipefail
+          for host in $(nix eval --raw --apply builtins.attrNames .#nixosConfigurations); do
+            printf '  %-14s ' "$host"
+            if nix eval --raw ".#nixosConfigurations.$host.config.system.build.toplevel.drvPath" >/dev/null; then
+              echo ok
+            else
+              echo FAIL
+              exit 1
+            fi
+          done
+
+      # The two packages and the formatter are what a person runs by hand from
+      # the README, so they are worth actually building rather than evaluating.
+      - name: build the standalone packages
+        run: nix build --no-link .#formatter .#astra-boot .#astra-info

@@ -2,10 +2,13 @@ name: lint
 
 # The only CI in this repo that can run green today.
 #
-# check.yml is disabled because building every host takes twenty minutes and was
-# reliably red. These three checks need no nix, no NixOS and no network, and they
-# catch the mistakes that actually happen when a config is edited by hand:
-# unbalanced braces, and a boot state machine that quietly does the wrong thing.
+# check.yml was disabled because building every host took twenty minutes and was
+# reliably red. It is enabled again now that the option it tripped over is fixed
+# and every host has been evaluated against the pinned nixpkgs. These three
+# checks need no nix, no NixOS and no network, and they catch the mistakes that
+# actually happen when a config is edited by hand: unbalanced braces, two
+# modules claiming one attribute, a host list that has drifted, and a boot state
+# machine that quietly does the wrong thing.
 #
 # Delete this file if you would rather not have CI at all — it is one command.
 on:
@@ -28,6 +31,11 @@ jobs:
         run: python3 .ci/nix-balance.py .
       - name: no attribute claimed by two modules with different values
         run: python3 .ci/nix-conflicts.py .
+      # flake.nix and install.sh each list the machines by hand. install.sh runs
+      # `nixos-rebuild --flake .#<host>`, so a host it offers but the flake
+      # cannot build is a bad morning for whoever is holding the laptop.
+      - name: flake.nix, install.sh and CI agree on the host list
+        run: python3 .ci/host-list.py .
 
   boot-state-machine:
     runs-on: ubuntu-latest
