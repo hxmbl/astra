@@ -7,9 +7,8 @@
   config,
   lib,
   ...
-}:
-{
-  imports = [ ./common.nix ./desktop.nix ];
+}: {
+  imports = [./common.nix ./desktop.nix];
 
   options.astra = {
     userName = lib.mkOption {

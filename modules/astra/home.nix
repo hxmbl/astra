@@ -14,11 +14,14 @@
 # Groundwork, not a finished system: Home Assistant is configured through its own
 # UI, which is what it is genuinely good at, and this module provides the machine
 # it runs on. See DECISIONS.md for what I chose not to do here.
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.astra.home;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.astra.home;
+in {
   # Imports go here, at module top level, NOT inside the mkIf below:
   #
   #   error: The option `imports' does not exist.
@@ -28,7 +31,7 @@ in
   # definition of a non-existent option and evaluation fails. The config
   # itself stays gated, so a host that does not enable this service still
   # gets nothing but inert option declarations.
-  imports = [ ../services/caddy.nix ];
+  imports = [../services/caddy.nix];
 
   options.astra.home = {
     enable = lib.mkOption {
@@ -129,8 +132,8 @@ in
       # integration domains are snake_case: `default_config`, not
       # `defaultConfig`. nixpkgs' own example for this option uses
       # homeassistant/frontend/http/feedreader.
-      config.default_config = { };
-      config.lufia = { };
+      config.default_config = {};
+      config.lufia = {};
     };
 
     # A local dashboard nobody outside can reach. Caddy is the only thing
@@ -192,7 +195,7 @@ in
         message_size_limit = 0;
       };
 
-      logDest = [ "${cfg.mqtt.dataDir}/mosquitto.log" ];
+      logDest = ["${cfg.mqtt.dataDir}/mosquitto.log"];
       logType = [
         "error"
         "warning"
@@ -203,7 +206,7 @@ in
       # default: a bridge to the internet would undo the entire premise.
     };
 
-    astra.packages = lib.mkIf cfg.esphome.enable [ pkgs.esphome ];
+    astra.packages = lib.mkIf cfg.esphome.enable [pkgs.esphome];
 
     # The broker listens on the LAN, so the LAN has to be able to reach it.
     # Caddy (imported above) opens 80/443; this is the one port that has to be
@@ -211,7 +214,7 @@ in
     networking.firewall = lib.mkIf cfg.mqtt.enable {
       # The port number itself, not toString: allowedTCPPorts is a list of ports
       # (16-bit ints), not strings.
-      allowedTCPPorts = [ cfg.mqtt.port ];
+      allowedTCPPorts = [cfg.mqtt.port];
     };
 
     # ---------------------------------------------------------------- zigbee --
@@ -222,8 +225,8 @@ in
         # The coordinator is on USB, so the container gets that device node and
         # nothing else. Host networking because it talks to the broker over
         # loopback, same as the other services on this box.
-        networks = [ "host" ];
-        extraOptions = [ "--device=${cfg.zigbee.device}" ];
+        networks = ["host"];
+        extraOptions = ["--device=${cfg.zigbee.device}"];
         volumes = [
           "zigbee2mqtt-data:/app/data"
           "${cfg.dataDir}:/app/data-backup"
@@ -233,7 +236,7 @@ in
     };
 
     systemd.tmpfiles.rules =
-      [ "d ${cfg.dataDir} 0750 root root -" ]
+      ["d ${cfg.dataDir} 0750 root root -"]
       ++ lib.optional cfg.mqtt.enable "d ${cfg.mqtt.dataDir} 0750 mosquitto mosquitto -";
 
     # -------------------------------------------------------------- tailnet --
@@ -242,7 +245,7 @@ in
     # certificate to renew — and it stops the moment Tailscale does.
     systemd.services.astra-home-serve = lib.mkIf cfg.tailscaleServe.enable {
       description = "Astra Home: publish the dashboard over Tailscale";
-      wantedBy = [ "network-online.target" ];
+      wantedBy = ["network-online.target"];
       after = [
         "network-online.target"
         "tailscaled.service"

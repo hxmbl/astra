@@ -12,8 +12,12 @@
 # one and the boot menu is rewritten to default to it. A generation that fails
 # `failures` times in a row gets skipped and the machine reboots itself into the
 # last generation that did work.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.astra.ab;
 
   # snapshots.nix declares astra.ab.snapshot.*, which ab.nix writes into
@@ -115,9 +119,8 @@ let
         echo "boot menu ok ($n astra entries on $esp)"
       '';
     };
-in
-{
-  imports = [ ./snapshots.nix ];
+in {
+  imports = [./snapshots.nix];
 
   options.astra.ab = {
     enable = lib.mkOption {
@@ -211,7 +214,7 @@ in
   };
 
   config = lib.mkIf (cfg.enable && config.astra.enable) {
-    environment.systemPackages = [ (import ../../lib/astra-boot.nix { inherit pkgs; }) ];
+    environment.systemPackages = [(import ../../lib/astra-boot.nix {inherit pkgs;})];
 
     # ------------------------------------------------------------- astra-boot --
     # One attribute set, built in one place: Nix refuses two definitions of
@@ -226,11 +229,19 @@ in
             ASTRA_INTERVAL=${toString cfg.interval}
             ASTRA_FAILURES=${toString cfg.failures}
             ASTRA_PROMOTE_AFTER=${toString cfg.promoteAfter}
-            ASTRA_REBOOT=${if cfg.reboot then "1" else "0"}
-            ASTRA_REQUIRE_NETWORK=${if cfg.requireNetwork then "1" else "0"}
+            ASTRA_REBOOT=${
+              if cfg.reboot
+              then "1"
+              else "0"
+            }
+            ASTRA_REQUIRE_NETWORK=${
+              if cfg.requireNetwork
+              then "1"
+              else "0"
+            }
             ASTRA_SNAPSHOT_ROOT=${config.astra.ab.snapshot.root}
             ASTRA_SNAPSHOT_PREFIX=${config.astra.ab.snapshot.prefix}
-            ASTRA_DEFAULT_CMDLINE=(${lib.escapeShellArgs (config.boot.kernelParams ++ [ "systemd.show_status=1" ])})
+            ASTRA_DEFAULT_CMDLINE=(${lib.escapeShellArgs (config.boot.kernelParams ++ ["systemd.show_status=1"])})
           '';
           mode = "0444";
         };
@@ -287,7 +298,7 @@ in
     # rejected, find out before anyone tries to log into it.
     systemd.services.astra-boot-arm = {
       description = "astra: A/B arm (decide if this generation is under test)";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       before = [
         "greetd.service"
         "display-manager.service"
@@ -314,7 +325,7 @@ in
     # want to know what the machine thinks of itself.
     systemd.services.astra-health = {
       description = "astra: health check (logs only; the guard acts on it)";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = ["multi-user.target"];
       after = [
         "multi-user.target"
         "astra-boot-arm.service"
@@ -337,7 +348,7 @@ in
 
     systemd.services.astra-boot-guard = {
       description = "astra: A/B guard (promote or roll back)";
-      after = [ "multi-user.target" ];
+      after = ["multi-user.target"];
       path = [
         pkgs.coreutils
         pkgs.util-linux
@@ -352,7 +363,7 @@ in
 
     systemd.timers.astra-boot-guard = {
       description = "astra: A/B guard";
-      wantedBy = [ "timers.target" ];
+      wantedBy = ["timers.target"];
       timerConfig = {
         OnBootSec = "${toString (cfg.interval * 3)}s";
         OnUnitActiveSec = "${toString cfg.interval}s";
@@ -385,7 +396,8 @@ in
     # instead (misc/crashdump.nix:66, virtualisation/azure-common.nix:43,
     # digital-ocean-config.nix:51).
     boot.kernelParams =
-      lib.optional cfg.haltOnPanic "panic=0" ++ lib.optionals (!cfg.haltOnPanic) [
+      lib.optional cfg.haltOnPanic "panic=0"
+      ++ lib.optionals (!cfg.haltOnPanic) [
         "panic=10"
       ];
   };

@@ -21,8 +21,12 @@
 #
 # The only supported way to remove something a lower profile added is
 # `astra.dropPackages`, so removals are greppable in one place.
-{ config, lib, pkgs, ... }:
-let
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
   cfg = config.astra;
 
   # Read by `astra-info` and written to /etc/astra/profile so the running
@@ -42,13 +46,20 @@ let
     profiles=${lib.concatStringsSep " " cfg.profiles}
     astraVersion=${cfg.version}
     nixpkgs=${config.system.nixos.version}
-    nixpkgsRev=${if config.system.nixos.revision == null then "unknown" else config.system.nixos.revision}
+    nixpkgsRev=${
+      if config.system.nixos.revision == null
+      then "unknown"
+      else config.system.nixos.revision
+    }
     user=${cfg.user}
-    desktop=${if cfg.desktop.enable then "true" else "false"}
+    desktop=${
+      if cfg.desktop.enable
+      then "true"
+      else "false"
+    }
   '';
-in
-{
-  imports = [ ../modules/astra/ssh.nix ../modules/astra/secrets.nix ];
+in {
+  imports = [../modules/astra/ssh.nix ../modules/astra/secrets.nix];
 
   # ---------------------------------------------------------------- options --
   options.astra = {
@@ -88,7 +99,7 @@ in
 
     userGroups = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "wheel" "networkmanager" ];
+      default = ["wheel" "networkmanager"];
       description = ''
         Supplementary groups for `astra.user`. Accumulates: core adds docker,
         desktop adds video/audio/input. Host-added groups (printer, bluetooth)
@@ -98,8 +109,8 @@ in
 
     packages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [ ];
-      example = with pkgs; [ ripgrep eza ];
+      default = [];
+      example = with pkgs; [ripgrep eza];
       description = ''
         Packages the host should have on PATH. This is the *only* way profiles
         add packages, so what ends up in the system is always a readable
@@ -110,8 +121,8 @@ in
 
     dropPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [ ];
-      example = with pkgs; [ pkgs.helix ];
+      default = [];
+      example = with pkgs; [pkgs.helix];
       description = ''
         Subtract from the accumulated `astra.packages`. Note this only removes
         what astra itself added; packages pulled in by other modules (e.g. the
@@ -133,7 +144,7 @@ in
 
     profiles = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
+      default = [];
       internal = true;
       description = "Names of the profiles that contributed to this host. Informational.";
     };
@@ -148,8 +159,8 @@ in
       servers = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
-          "9.9.9.9"   # Quad9: filters malware, logs nothing, no vendor profile
-          "1.1.1.1"   # Cloudflare: fast, secondary
+          "9.9.9.9" # Quad9: filters malware, logs nothing, no vendor profile
+          "1.1.1.1" # Cloudflare: fast, secondary
         ];
         description = ''
           Upstream resolvers. Quad9 first because it is the only one of the
@@ -180,31 +191,33 @@ in
 
       hostKeys = lib.mkOption {
         type = lib.types.listOf lib.types.path;
-        default = [ ];
+        default = [];
         description = "Extra host keys to generate (paths). Empty means the NixOS default set.";
       };
 
       extraSettings = lib.mkOption {
         type = lib.types.attrs;
-        default = { };
-        example = { PasswordAuthentication = false; };
+        default = {};
+        example = {PasswordAuthentication = false;};
         description = "Merged last into `services.openssh.settings`; hosts add keys and policy here.";
       };
     };
   };
 
   config = lib.mkIf cfg.enable {
-    astra.profiles = [ "base" ];
+    astra.profiles = ["base"];
 
     # --------------------------------------------------------------- account --
-    users.users.${cfg.user} = {
-      isNormalUser = true;
-      description = "astra";
-      extraGroups = cfg.userGroups;
-      shell = pkgs.zsh;
-    } // lib.optionalAttrs (cfg.initialPassword != "") {
-      initialPassword = cfg.initialPassword;
-    };
+    users.users.${cfg.user} =
+      {
+        isNormalUser = true;
+        description = "astra";
+        extraGroups = cfg.userGroups;
+        shell = pkgs.zsh;
+      }
+      // lib.optionalAttrs (cfg.initialPassword != "") {
+        initialPassword = cfg.initialPassword;
+      };
 
     # The account's shell is zsh, and home-manager only enables zsh in the
     # *home* namespace, which the shell assertion cannot see. Without this the
@@ -218,7 +231,7 @@ in
 
     # ---------------------------------------------------------------- locale --
     i18n.defaultLocale = "en_US.UTF-8";
-    i18n.supportedLocales = [ "en_US.UTF-8/UTF-8" ];
+    i18n.supportedLocales = ["en_US.UTF-8/UTF-8"];
     # Without this glibc 2.40+ prints a warning on every start-up for the
     # default locale.
     i18n.extraLocaleSettings.LC_COLLATE = "C";
@@ -247,9 +260,9 @@ in
 
     # ------------------------------------------------------------------ nix --
     nix.settings = {
-      experimental-features = [ "nix-command" "flakes" ];
+      experimental-features = ["nix-command" "flakes"];
       auto-optimise-store = true;
-      trusted-users = [ "root" "@wheel" ];
+      trusted-users = ["root" "@wheel"];
       warn-dirty = false;
     };
     nix.gc = {
@@ -288,7 +301,7 @@ in
     };
 
     # --------------------------------------------------------------- paths ---
-    systemd.tmpfiles.rules = [ "d /var/lib/astra 0755 root root -" ];
+    systemd.tmpfiles.rules = ["d /var/lib/astra 0755 root root -"];
 
     environment.etc."astra/profile" = {
       text = profileFacts;
@@ -296,8 +309,9 @@ in
     };
 
     # ---------------------------------------------------------------- pkgs ---
-    environment.systemPackages = lib.subtractLists cfg.dropPackages cfg.packages
-      ++ [ (import ../lib/astra-info.nix { inherit pkgs; }).package ];
+    environment.systemPackages =
+      lib.subtractLists cfg.dropPackages cfg.packages
+      ++ [(import ../lib/astra-info.nix {inherit pkgs;}).package];
 
     # ------------------------------------------------------- baseline pkgs ---
     # The floor every astra machine gets. Anything more specific belongs in a

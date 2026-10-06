@@ -7,11 +7,14 @@
 #
 # The NixOS module already creates the `greeter` system user that the session
 # runs as; we only tell it what to run.
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.astra;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.astra;
+in {
   config = lib.mkIf (cfg.enable && cfg.desktop.enable) {
     services.greetd = {
       enable = true;
@@ -32,7 +35,6 @@ in
     # which is exactly the kind of thing that looks like it works right up until
     # the day you need it. This one line is what makes "press Tab at the login
     # screen" true.
-    systemd.services.greetd.environment.XDG_DATA_DIRS =
-      "/etc/xdg:/run/current-system/sw/share";
+    systemd.services.greetd.environment.XDG_DATA_DIRS = "/etc/xdg:/run/current-system/sw/share";
   };
 }

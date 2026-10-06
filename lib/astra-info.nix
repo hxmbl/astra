@@ -4,8 +4,7 @@
 # works on every machine) and once as a flake package (so
 # `nix run github:hxmbl/astra#astra-info` works on a machine that has not
 # installed astra yet, which is exactly the machine you want it on).
-{ pkgs }:
-let
+{pkgs}: let
   script = pkgs.writeShellScript "astra-info" ''
     set -uo pipefail
 
@@ -33,8 +32,7 @@ let
       echo "boot: run 'sudo astra-boot status' for generation and health state"
     fi
   '';
-in
-{
+in {
   inherit script;
   package = pkgs.writeShellScriptBin "astra-info" script;
 }

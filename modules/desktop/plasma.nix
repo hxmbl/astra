@@ -3,11 +3,14 @@
 #
 # The greeter lives in greetd.nix, the app/binary choices live in
 # profiles/desktop.nix. This module is "make a seat" and "make it work".
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.astra;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.astra;
+in {
   config = lib.mkIf cfg.enable {
     # ------------------------------------------------------------- session --
     # `enable` is the whole interface. This nixpkgs has no
@@ -97,7 +100,7 @@ in
           "Noto Sans"
           "DejaVu Sans"
         ];
-        serif = [ "Noto Serif" "DejaVu Serif" ];
+        serif = ["Noto Serif" "DejaVu Serif"];
       };
     };
 

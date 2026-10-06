@@ -12,11 +12,13 @@
 # HTTPS is on when you have given an ACME email, off otherwise. An internal-only
 # box asking Let's Encrypt for a certificate for `searx.astra.local` just
 # produces a boot-time error and a browser warning.
-{ config, lib, ... }:
-let
-  cfg = config.astra.caddy;
-in
 {
+  config,
+  lib,
+  ...
+}: let
+  cfg = config.astra.caddy;
+in {
   options.astra.caddy = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -64,7 +66,7 @@ in
           };
         }
       );
-      default = [ ];
+      default = [];
       description = "Services wanting a vhost. Modules append to this; hosts rarely do.";
     };
   };
@@ -81,7 +83,7 @@ in
     };
 
     # Nothing but caddy should ever listen for HTTP.
-    networking.firewall.allowedTCPPorts = [ 80 443 ];
+    networking.firewall.allowedTCPPorts = [80 443];
 
     services.caddy.virtualHosts =
       # A plain attrset keyed by hostname, not a list of { name, value } pairs:
@@ -94,11 +96,10 @@ in
       # so a reverse proxy goes in extraConfig (types.lines, line 78).
       builtins.listToAttrs (
         map (
-          h:
-          {
+          h: {
             name = "${h.name}.${cfg.domain}";
             value = {
-              listenAddresses = [ "0.0.0.0" ];
+              listenAddresses = ["0.0.0.0"];
               # No explicit tls block on purpose: Caddy's automatic HTTPS does the
               # right thing for real names and stays on :80 for internal ones.
               extraConfig = ''

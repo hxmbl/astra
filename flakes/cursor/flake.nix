@@ -9,15 +9,18 @@
     };
   };
 
-  outputs = { self, nixpkgs, cursor }:
-    let
-      system = "x86_64-linux";
-    in {
-      packages.${system}.default = cursor.packages.${system}.default;
+  outputs = {
+    self,
+    nixpkgs,
+    cursor,
+  }: let
+    system = "x86_64-linux";
+  in {
+    packages.${system}.default = cursor.packages.${system}.default;
 
-      apps.${system}.default = {
-        type = "app";
-        program = "${cursor.packages.${system}.default}/bin/cursor";
-      };
+    apps.${system}.default = {
+      type = "app";
+      program = "${cursor.packages.${system}.default}/bin/cursor";
     };
+  };
 }

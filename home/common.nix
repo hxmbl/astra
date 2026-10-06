@@ -1,6 +1,5 @@
 # home/common.nix — the shell, for machines with or without a screen.
-{ ... }:
-{
+{...}: {
   programs.zsh = {
     enable = true;
     autosuggestion.enable = true;
@@ -113,5 +112,5 @@
 
   # Nothing here needs to be on PATH that the system profile does not already
   # provide; keeping home.packages empty is intentional.
-  home.packages = [ ];
+  home.packages = [];
 }

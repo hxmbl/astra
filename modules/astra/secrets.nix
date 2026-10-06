@@ -19,11 +19,14 @@
 # The directory is deliberately outside the store and outside /run, because a
 # generated secret that changes on every reboot breaks exactly the things that
 # depend on it.
-{ config, lib, pkgs, ... }:
-let
-  cfg = config.astra.secrets;
-in
 {
+  config,
+  lib,
+  pkgs,
+  ...
+}: let
+  cfg = config.astra.secrets;
+in {
   options.astra.secrets = {
     dir = lib.mkOption {
       type = lib.types.str;
@@ -67,7 +70,7 @@ in
           };
         }
       );
-      default = [ ];
+      default = [];
       example = [
         {
           name = "searxng-secret";
@@ -79,7 +82,7 @@ in
   };
 
   config = {
-    systemd.tmpfiles.rules = [ "d ${cfg.dir} ${cfg.mode} root root -" ];
+    systemd.tmpfiles.rules = ["d ${cfg.dir} ${cfg.mode} root root -"];
 
     # Runs before switch-to-configuration changes anything, so a service can
     # already read its file during activation.
@@ -90,30 +93,29 @@ in
     # these four scripts is already the order we want:
     #   astra-ab, astra-secrets, astra-snapshot, astra-snapshot-prune
     # ('e' < 'n', so "astra-secrets" sorts before "astra-snapshot").
-    system.activationScripts.astra-secrets = ''
-      mkdir -p ${cfg.dir}
-      chmod ${cfg.mode} ${cfg.dir}
-    ''
-    + lib.concatMapStrings (
-      s:
-      let
-        key =
-          if s.key != "" then
-            s.key
-          else
-            lib.toUpper (lib.replaceStrings [ "-" ] [ "_" ] s.name);
-        file = "${cfg.dir}/${s.name}.env";
-      in
+    system.activationScripts.astra-secrets =
       ''
-        if [ ! -s ${lib.escapeShellArg file} ]; then
-          umask 077
-          printf '%s=%s\n' ${lib.escapeShellArg key} "$(openssl rand -hex ${toString s.length})" > ${lib.escapeShellArg file}
-          echo "astra: generated ${file}"
-        fi
-        chmod 0600 ${lib.escapeShellArg file}
+        mkdir -p ${cfg.dir}
+        chmod ${cfg.mode} ${cfg.dir}
       ''
-    ) cfg.generate;
+      + lib.concatMapStrings (
+        s: let
+          key =
+            if s.key != ""
+            then s.key
+            else lib.toUpper (lib.replaceStrings ["-"] ["_"] s.name);
+          file = "${cfg.dir}/${s.name}.env";
+        in ''
+          if [ ! -s ${lib.escapeShellArg file} ]; then
+            umask 077
+            printf '%s=%s\n' ${lib.escapeShellArg key} "$(openssl rand -hex ${toString s.length})" > ${lib.escapeShellArg file}
+            echo "astra: generated ${file}"
+          fi
+          chmod 0600 ${lib.escapeShellArg file}
+        ''
+      )
+      cfg.generate;
 
-    environment.systemPackages = [ pkgs.openssl ];
+    environment.systemPackages = [pkgs.openssl];
   };
 }

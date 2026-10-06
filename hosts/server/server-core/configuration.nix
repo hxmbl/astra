@@ -1,10 +1,6 @@
 # astra-server-core — the smallest thing that is useful as a server: sshd, a
 # firewall, a hostname. Everything else on it is deliberate.
-{
-  pkgs,
-  ...
-}:
-{
+{pkgs, ...}: {
   imports = [
     ../../../profiles/base.nix
 
@@ -32,7 +28,7 @@
     AuthenticationMethods = "publickey";
   };
 
-  networking.firewall.allowedTCPPorts = [ 22 ];
+  networking.firewall.allowedTCPPorts = [22];
 
   astra.ab = {
     # enable explicitly: the default is "on if systemd-boot is the loader", and
@@ -47,7 +43,7 @@
 
   # A server has no use for a dev toolchain, but it does need the tools that
   # make `nixos-rebuild` and a container runtime pleasant to live with.
-  astra.packages = with pkgs; [ bash-completion tree ];
+  astra.packages = with pkgs; [bash-completion tree];
 
   system.stateVersion = "24.11";
 }

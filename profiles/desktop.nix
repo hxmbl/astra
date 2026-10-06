@@ -18,12 +18,10 @@
   cursor,
   zen-browser,
   ...
-}:
-let
+}: let
   cfg = config.astra;
   system = pkgs.stdenv.hostPlatform.system;
-in
-{
+in {
   imports = [
     ./core.nix
     ../modules/desktop/plasma.nix
@@ -44,10 +42,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    astra.profiles = [ "desktop" ];
+    astra.profiles = ["desktop"];
     astra.desktop.enable = true;
 
-    astra.userGroups = [ "video" "audio" "input" "render" ];
+    astra.userGroups = ["video" "audio" "input" "render"];
 
     astra.packages =
       (with pkgs; [

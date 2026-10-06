@@ -12,11 +12,13 @@
 #
 # Ordering that matters: the snapshot has to be taken *before* switch-to-configuration
 # changes anything, which is what system.activationScripts does.
-{ config, lib, ... }:
-let
-  cfg = config.astra.ab.snapshot;
-in
 {
+  config,
+  lib,
+  ...
+}: let
+  cfg = config.astra.ab.snapshot;
+in {
   options.astra.ab.snapshot = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -62,7 +64,7 @@ in
 
     # A subvolume to put them in. Without this they land on / and then get
     # snapshotted into themselves, which fills the disk in about a week.
-    systemd.tmpfiles.rules = [ "d ${cfg.root} 0700 root root -" ];
+    systemd.tmpfiles.rules = ["d ${cfg.root} 0700 root root -"];
 
     # The snapshot settings themselves are appended to /etc/astra/boot.conf by
     # modules/boot/ab.nix — one config file, one owner.

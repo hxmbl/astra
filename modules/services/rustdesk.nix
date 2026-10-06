@@ -8,11 +8,13 @@
 # The relay key is generated into astra.secrets on first activation. Clients
 # need the same key typed in, which is the whole point: without it, nobody can
 # use the relay even if they find the address.
-{ config, lib, ... }:
-let
-  cfg = config.services.rustdesk;
-in
 {
+  config,
+  lib,
+  ...
+}: let
+  cfg = config.services.rustdesk;
+in {
   # Imports go here, at module top level, NOT inside the mkIf below:
   #
   #   error: The option `imports' does not exist.
@@ -22,7 +24,7 @@ in
   # definition of a non-existent option and evaluation fails. The config
   # itself stays gated, so a host that does not enable this service still
   # gets nothing but inert option declarations.
-  imports = [ ./caddy.nix ../astra/secrets.nix ];
+  imports = [./caddy.nix ../astra/secrets.nix];
 
   options.services.rustdesk = {
     enable = lib.mkOption {
@@ -75,7 +77,7 @@ in
       ];
       # hbbs also serves UDP so clients can try a direct connection that skips
       # the relay entirely.
-      allowedUDPPorts = [ cfg.ports.hbbs ];
+      allowedUDPPorts = [cfg.ports.hbbs];
     };
 
     virtualisation.oci-containers = {
@@ -88,18 +90,18 @@ in
           "-r"
           "${config.networking.hostName}:${toString cfg.ports.hbbs}"
         ];
-        networks = [ "host" ];
-        environmentFiles = [ "${config.astra.secrets.dir}/rustdesk-key.env" ];
-        volumes = [ "rustdesk-data:/root" ];
+        networks = ["host"];
+        environmentFiles = ["${config.astra.secrets.dir}/rustdesk-key.env"];
+        volumes = ["rustdesk-data:/root"];
         autoStart = true;
       };
 
       containers.rustdesk-hbbr = {
         image = "rustdesk/rustdesk-server:latest";
-        cmd = [ "hbbr" ];
-        networks = [ "host" ];
-        environmentFiles = [ "${config.astra.secrets.dir}/rustdesk-key.env" ];
-        volumes = [ "rustdesk-data:/root" ];
+        cmd = ["hbbr"];
+        networks = ["host"];
+        environmentFiles = ["${config.astra.secrets.dir}/rustdesk-key.env"];
+        volumes = ["rustdesk-data:/root"];
         autoStart = true;
       };
     };

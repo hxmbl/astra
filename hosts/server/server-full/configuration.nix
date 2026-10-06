@@ -5,11 +5,7 @@
 # (RustDesk's relay). This file is now almost entirely "which services and
 # which hostname" — the definitions live in modules/services/ so the same
 # modules can serve astra-home.
-{
-  pkgs,
-  ...
-}:
-{
+{pkgs, ...}: {
   imports = [
     ../../../profiles/core.nix
     ../../../modules/boot/ab.nix

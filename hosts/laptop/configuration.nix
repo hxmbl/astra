@@ -2,10 +2,7 @@
 #
 # A profile is 95% of this file; what lives here is the stuff that is genuinely
 # about *this* machine: how it boots, what it is plugged into, and who logs in.
-{
-  ...
-}:
-{
+{...}: {
   imports = [
     ../../profiles/desktop.nix
 
@@ -46,7 +43,7 @@
   # equivalent is systemd.enableEmergencyMode
   # (nixos/modules/system/boot/emergency-mode.nix:13), which defaults to true.
   boot.initrd.systemd.emergencyAccess = true;
-  boot.kernelParams = [ "quiet" "splash" "rd.systemd.show_status=1" ];
+  boot.kernelParams = ["quiet" "splash" "rd.systemd.show_status=1"];
   boot.kernel.sysctl."kernel.kptr_restrict" = 1;
 
   # ------------------------------------------------------------------ disks --
@@ -57,14 +54,14 @@
   };
 
   # -------------------------------------------------------------- accounts --
-  astra.userGroups = [ "bluetooth" "lp" "scanner" ];
+  astra.userGroups = ["bluetooth" "lp" "scanner"];
   # Declared explicitly so `extraGroups` above can never reference a group that
   # some module forgot to create. Merging an empty attrset is a no-op if nixpkgs
   # already made it.
   users.groups = {
-    bluetooth = { };
-    lp = { };
-    scanner = { };
+    bluetooth = {};
+    lp = {};
+    scanner = {};
   };
 
   # ---------------------------------------------------------------- memory --

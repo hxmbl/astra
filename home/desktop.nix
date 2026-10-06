@@ -14,9 +14,11 @@
 # telemetry, telemetry-adjacent "studies", Firefox accounts, Pocket, search
 # suggestions and tracking all off, in a place the browser reads before the
 # profile exists.
-{ config, lib, ...
-}:
 {
+  config,
+  lib,
+  ...
+}: {
   config = lib.mkIf config.astra.desktop.enable {
     # ----------------------------------------------------------- ghostty ----
     xdg.configFile."ghostty/config".text = ''
@@ -98,7 +100,7 @@
       # is not a function but a set: { _type = \"order\"; ... }".
       # `installPackages` is a real entry (home-environment.nix:709) and is what
       # links ~/.config into place, which this step reads.
-      astraBrowserPolicies = lib.hm.dag.entryAfter [ "installPackages" ] ''
+      astraBrowserPolicies = lib.hm.dag.entryAfter ["installPackages"] ''
         # Point every browser profile at the one policy file astra manages.
         # Idempotent: an existing symlink is simply replaced.
         policies="$HOME/.config/astra/browser-policies.json"

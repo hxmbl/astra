@@ -3,11 +3,13 @@
 # Dashdot is a self-hosted alternative to the wall of vendor status pages: it
 # watches one machine and tells you what that machine is doing. Local only, no
 # account, no outbound calls.
-{ config, lib, ... }:
-let
-  cfg = config.services.dashdot;
-in
 {
+  config,
+  lib,
+  ...
+}: let
+  cfg = config.services.dashdot;
+in {
   # Imports go here, at module top level, NOT inside the mkIf below:
   #
   #   error: The option `imports' does not exist.
@@ -17,7 +19,7 @@ in
   # definition of a non-existent option and evaluation fails. The config
   # itself stays gated, so a host that does not enable this service still
   # gets nothing but inert option declarations.
-  imports = [ ./caddy.nix ];
+  imports = [./caddy.nix];
 
   options.services.dashdot = {
     enable = lib.mkOption {
@@ -58,7 +60,7 @@ in
         # No inter-container dependencies, so plain bridge networking plus an
         # explicit publish is both simpler and closer to what upstream expects.
         # Bound to loopback: Caddy is the only thing that needs to reach it.
-        ports = [ "127.0.0.1:${toString cfg.port}:3001" ];
+        ports = ["127.0.0.1:${toString cfg.port}:3001"];
         volumes = [
           "${cfg.dataDir}:/app/data"
           # The dashboard's whole reason to exist: host metrics.
@@ -68,6 +70,6 @@ in
       };
     };
 
-    systemd.tmpfiles.rules = [ "d ${cfg.dataDir} 0755 root root -" ];
+    systemd.tmpfiles.rules = ["d ${cfg.dataDir} 0755 root root -"];
   };
 }

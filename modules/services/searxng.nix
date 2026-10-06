@@ -13,11 +13,13 @@
 #   - searxng's config is just SEARXNG_BIND_ADDRESS=127.0.0.1
 # Both services bind to loopback only, so nothing about it is reachable from the
 # LAN and only Caddy is.
-{ config, lib, ... }:
-let
-  cfg = config.services.searxng;
-in
 {
+  config,
+  lib,
+  ...
+}: let
+  cfg = config.services.searxng;
+in {
   # Imports go here, at module top level, NOT inside the mkIf below:
   #
   #   error: The option `imports' does not exist.
@@ -27,7 +29,7 @@ in
   # definition of a non-existent option and evaluation fails. The config
   # itself stays gated, so a host that does not enable this service still
   # gets nothing but inert option declarations.
-  imports = [ ./caddy.nix ../astra/secrets.nix ];
+  imports = [./caddy.nix ../astra/secrets.nix];
 
   options.services.searxng = {
     enable = lib.mkOption {
@@ -79,16 +81,16 @@ in
 
       containers.searxng-valkey = {
         image = "valkey/valkey:9-alpine";
-        networks = [ "host" ];
-        volumes = [ "searxng-valkey:/data" ];
+        networks = ["host"];
+        volumes = ["searxng-valkey:/data"];
         autoStart = true;
       };
 
       containers.searxng = {
         image = "searxng/searxng:latest";
-        networks = [ "host" ];
-        volumes = [ "${cfg.settingsDir}:/etc/searxng:rw" ];
-        environmentFiles = [ "${config.astra.secrets.dir}/searxng-secret.env" ];
+        networks = ["host"];
+        volumes = ["${cfg.settingsDir}:/etc/searxng:rw"];
+        environmentFiles = ["${config.astra.secrets.dir}/searxng-secret.env"];
         environment = {
           SEARXNG_BASE_URL = "http://searx.${config.astra.caddy.domain}/";
           SEARXNG_BIND_ADDRESS = "127.0.0.1";
@@ -99,6 +101,6 @@ in
       };
     };
 
-    systemd.tmpfiles.rules = [ "d ${cfg.settingsDir} 0755 root root -" ];
+    systemd.tmpfiles.rules = ["d ${cfg.settingsDir} 0755 root root -"];
   };
 }

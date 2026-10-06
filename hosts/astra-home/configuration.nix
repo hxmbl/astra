@@ -4,10 +4,7 @@
 # The only thing that makes this box different is modules/astra/home.nix: a local
 # Home Assistant, a local MQTT broker, ESPHome for writing your own sensor
 # firmware, and no cloud account anywhere in sight.
-{
-  ...
-}:
-{
+{...}: {
   imports = [
     ../../profiles/core.nix
     ../../modules/boot/ab.nix

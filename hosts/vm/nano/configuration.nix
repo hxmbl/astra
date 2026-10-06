@@ -4,9 +4,8 @@
   lib,
   pkgs,
   ...
-}:
-{
-  imports = [ ../../../profiles/base.nix ];
+}: {
+  imports = [../../../profiles/base.nix];
 
   networking.hostName = "astra-vm-nano";
 
@@ -24,8 +23,8 @@
   # instead of leaving you to guess from an empty shell.
   systemd.services.astra-smoke-test = {
     description = "Astra smoke test";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network.target" ];
+    wantedBy = ["multi-user.target"];
+    after = ["network.target"];
     serviceConfig = {
       type = "oneshot";
       ExecStart = lib.getExe' pkgs.coreutils "true";
